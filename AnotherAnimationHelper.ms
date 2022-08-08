@@ -10,6 +10,7 @@ global NewBiped_Number = 1000
 global NewSM_Number = 0
 global Rig_Tuner_Rollout
 callbacks.removeScripts id:#rigtuner
+callbacks.removeScripts id:#processinfo
 
 global ACAnimRangeStartKeyframe = undefined
 global ACAnimRangeEndKeyframe = undefined
@@ -336,28 +337,8 @@ fn GetCharacterHierarchy obj =
 	return cH
 )
 
-/*fn SelectHierarchyRootOnly obj =
-(
-	local rootObj = GetRoot obj
-	select rootObj
-)
-
-fn SelectAllChildren obj =
-(
-	if obj.children.count > 0 do
-	(
-		for child in obj.children do
-		(
-			selectmore child
-			SelectAllChildren child
-		)
-	)
-)*/
-
 fn SelectAllHierarchy obj =
 (
-	--SelectHierarchyRootOnly obj
-	--if selection[1] != undefined do SelectAllChildren selection[1]
 	local aH = #()
 	local rootObj = GetRoot obj
 	if rootObj != undefined do 
@@ -372,12 +353,11 @@ fn SelectAllHierarchy obj =
 fn HasSkinModifier obj =
 (
 	local skinModifierFound = false
-	for i = 1 to obj.modifiers.count do
+	for i = 1 to obj.modifiers.count while skinModifierFound == false do
 	(
 		if classof obj.modifiers[i] == Skin do
 		(
 			skinModifierFound = true
-			exit
 		)
 	)
 	return skinModifierFound
@@ -386,53 +366,85 @@ fn HasSkinModifier obj =
 fn GetSkinMeshes selectedBones =
 (
 	local relatedSkins = #()
-	for obj in geometry do
+	if getUserProp selectedBones[1] "SkinMeshNumber" != undefined then
 	(
-		if (HasSkinModifier obj) do
+		for obj in geometry do
 		(
-			if getUserProp obj "SkinMeshNumber" != undefined then
+			if (HasSkinModifier obj) do
 			(
-				for i = 1 to selectedBones.count do
+				if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == getUserProp selectedBones[1] "SkinMeshNumber" do append relatedSkins obj
+			)
+		)
+	)
+	else
+	(
+		local s_Array = selection as array
+		for obj in geometry do
+		(
+			if (HasSkinModifier obj) do
+			(
+				local shitFound = false
+				if getUserProp obj "SkinMeshNumber" != undefined then
 				(
-					if getUserProp selectedBones[i] "SkinMeshNumber" != undefined do
+					for i = 1 to selectedBones.count while shitFound == false do
 					(
-						if getUserProp obj "SkinMeshNumber" == getUserProp selectedBones[i] "SkinMeshNumber" do
+						if getUserProp selectedBones[i] "SkinMeshNumber" != undefined do
 						(
-							append relatedSkins obj
-							exit
+							if getUserProp obj "SkinMeshNumber" == getUserProp selectedBones[i] "SkinMeshNumber" do
+							(
+								append relatedSkins obj
+								shitFound = true
+							)
 						)
 					)
-				)
-			)	
-			else
-			(
-				select obj
-				setCommandPanelTaskMode #modify
-				modPanel.setCurrentObject obj.modifiers[#Skin]
-				local boneListCount = skinOps.GetNumberBones obj.skin
-				if boneListCount > 0 do
+				)	
+				else
 				(
-					local boneName = skinOps.getBoneName obj.skin 1 1
-					for i = 1 to selectedBones.count do
+					max modify mode
+					for sk in obj.modifiers where iskindof sk Skin while shitFound == false do
 					(
-						if boneName == selectedBones[i].name do
+						modpanel.setcurrentobject sk
+						local sknodes = for n in (refs.dependson sk) where isvalidnode n collect n
+						
+						for i=1 to skinops.getnumberbones sk while shitFound == false do 
 						(
-							append relatedSkins obj
-							IncreaseSkinMeshNumber()
-							setUserProp obj "SkinMeshNumber" NewSM_Number
-							local sBoneHier = GetAllHierarchy selectedBones[i]
-							for i = 1 to sBoneHier.count do
+							sknname = skinops.getbonename sk i 0
+							
+							for k = 1 to sknodes.count while shitFound == false do
 							(
-								setUserProp sBoneHier[i] "SkinMeshNumber" NewSM_Number
+								if shitFound == false and stricmp sknname sknodes[k].name == 0 do
+								(
+									for l = 1 to selectedBones.count while shitFound == false do
+									(
+										if shitFound == false and sknodes[k] == selectedBones[l] do
+										(
+											append relatedSkins obj
+											if getUserProp selectedBones[l] "SkinMeshNumber" == undefined then
+											(
+												IncreaseSkinMeshNumber()
+												setUserProp obj "SkinMeshNumber" NewSM_Number
+												for m = 1 to selectedBones.count do
+												(
+													setUserProp selectedBones[m] "SkinMeshNumber" NewSM_Number
+												)
+											)
+											else setUserProp obj "SkinMeshNumber" (getUserProp selectedBones[l] "SkinMeshNumber")
+											shitFound = true
+										)
+									)
+								)
 							)
-							exit
 						)
 					)
 				)
 			)
 		)
+		clearselection()
+		for obj in s_Array do
+		(
+			selectmore obj
+		)
 	)
-	clearSelection()
 	return relatedSkins
 )
 
@@ -442,6 +454,53 @@ fn RoundUp2 RValue RAccValue =
 )
 
 /*********************************************************************************************************************************************************************/
+--// PROCESS ROLLOUT
+/*********************************************************************************************************************************************************************/
+
+rollout Process_Rollout "Process Info" width:132 height:30
+(
+	progressbar prgb_AAH color:orange tooltip:"Current process progress bar"
+	label lbl_PrcssAAH "AAH is ready for use" align:#left tooltip:"Current process info"
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	
+	fn ProgressInfoStatusUpdate =
+	(
+		if selection.count == 1 then
+		(
+			lbl_PrcssAAH.text = "Selected: " + $.name
+		)
+		else if selection.count > 1 then
+		(
+			lbl_PrcssAAH.text = "Selected few objects"
+		)
+		else
+		(
+			lbl_PrcssAAH.text = "AAH is ready for use"
+			--prgb_AAH.value = 100.*i/aAFHGlobal.subanimsq
+		)
+	)
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+
+	on Process_Rollout open do
+	(
+		callbacks.addScript #selectionSetChanged "Process_Rollout.ProgressInfoStatusUpdate()" id:#processinfo
+		ProgressInfoStatusUpdate()
+	)
+
+	on Process_Rollout close do
+	(
+		callbacks.removeScripts id:#processinfo
+	)
+	
+) --// end rollout
+
+/*********************************************************************************************************************************************************************/
 --// RIG TUNER ROLLOUT
 /*********************************************************************************************************************************************************************/
 
@@ -449,21 +508,21 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 (
 	group "Create bones"
 	(
-		button btn_CreateRootB "Create Root" width:71 align:#left across:2 tooltip:"Creates a Root bone at the center of scene."
-		button btn_CreateChildB "Add Children" width:76 align:#right tooltip:"Adds children bone for selected one.\nSelect ONE bone and push this button."
+		button btn_CreateRootB "Create Root" width:71 height:16 align:#left across:2 tooltip:"Creates a Root bone at the center of scene."
+		button btn_CreateChildB "Add Children" width:76 height:16 align:#right tooltip:"Adds children bone for selected one.\nSelect ONE bone and push this button."
 	)
 	group "Set SubID / BoneID"
 	(
 		spinner spn_SubID "Set ID: " range:[-1, 100000, 0] type:#integer align:#left offset:[2,0] fieldwidth:45 across:2
-		button btn_SubIDSet "Set!" width:27 height:18 pos:[112,75] tooltip:"Applies SubID/BoneID for selected sub-object/bone."
+		button btn_SubIDSet "Set!" width:27 height:16 pos:[112,72] tooltip:"Applies SubID/BoneID for selected sub-object/bone."
 		--checkbutton btn_SubIDSet "Set!" width:27 height:18 pos:[112,75] highlightcolor:orange enabled:false tooltip:"Applies SubID/BoneID for selected sub-object/bone."
 		--checkbutton cbtn_ReplaceAnim "Replace" width:52 align:#left highlightcolor:orange checked:true tooltip:"Completely replaces object's animation with the selected one since frame 0.\nOtherwise applies selected animation after selected frame." across:2 enabled:false
 		
-		button btn_SetSubIDs "Calculate for all hierarchy" width:150 tooltip:"Automatically calculates SubID/BoneID parameters for hierarchy.\nSelect any sub-object/bone of hierarchy and push this button."
+		button btn_SetSubIDs "Calculate for all hierarchy" width:150 height:16 tooltip:"Automatically calculates SubID/BoneID parameters for hierarchy.\nSelect any sub-object/bone of hierarchy and push this button."
 	)
 	group "Indexes and Types of bones"
 	(
-		button btn_SetBoneIdxsnTypes "Calculate for all hierarchy" width:150 tooltip:"Automatically calculates BoneType and BoneIndex parameters for custom bone hierarchy.\nSelect any bone of hierarchy and push this button."
+		button btn_SetBoneIdxsnTypes "Calculate for all hierarchy" width:150 height:16 tooltip:"Automatically calculates BoneType and BoneIndex parameters for custom bone hierarchy.\nSelect any bone of hierarchy and push this button."
 	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
@@ -698,23 +757,23 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 (
 	group "Select hierarchy"
 	(
-		button SelectAllItems "All" width:25 pos:[8,25] across:3 tooltip:"Automatically will select all the items of picked hierarchy.\nSelect any item and push this button."
-		button SelectAllExceptRootItem "Except Root" width:73 pos:[36,25] tooltip:"Automatically will select all the items of picked hierarchy, except Root one.\nSelect any item and push this button."
-		button SelectOnlyRootItem "Only Root" width:57 pos:[112,25] tooltip:"Automatically will select only Root item of picked hierarchy.\nSelect any item and push this button."
+		button SelectAllItems "All" width:25 height:16 pos:[8,25] across:3 tooltip:"Automatically will select all the items of picked hierarchy.\nSelect any item and push this button."
+		button SelectAllExceptRootItem "Except Root" width:73 height:16 pos:[36,25] tooltip:"Automatically will select all the items of picked hierarchy, except Root one.\nSelect any item and push this button."
+		button SelectOnlyRootItem "Only Root" width:57 height:16 pos:[112,25] tooltip:"Automatically will select only Root item of picked hierarchy.\nSelect any item and push this button."
 	)
 	group "Transform Helper"
 	(
 		checkbox chkbx_ThTrnsfrmPos "Pos" align:#left checked:false across:3 tooltip:"Work with object's position."
 		checkbox chkbx_ThTrnsfrmRot "Rot" align:#center checked:true across:3 tooltip:"Work with object's rotation."
 		checkbox chkbx_ThTrnsfrmScale "Scale" align:#right checked:false across:3 tooltip:"Work with object's scale."
-		button CopyPasteObjectsTransform "Copy object's transform" tooltip:"Copies selected object's transform to another one, if checked above."
-		button ResetObjectsTransform "Reset object's transform" tooltip:"Resets selected objects' transform to default values, if checked above:\npos 0.0\nrot 0.0\nscale 100.0\nSometimes scale reset will cause funny values but it should work that way, it's made for the first frame reset."
+		button CopyPasteObjectsTransform "Copy object's transform" height:16 tooltip:"Copies selected object's transform to another one, if checked above."
+		button ResetObjectsTransform "Reset object's transform" height:16 tooltip:"Resets selected objects' transform to default values, if checked above:\npos 0.0\nrot 0.0\nscale 100.0\nSometimes scale reset will cause funny values but it should work that way, it's made for the first frame reset."
 	)	
 	group "Attach/Detach/Bake object"
 	(
-		button AttachObjTo "Attach to selected" width:97 align:#left across:2 tooltip:"Attaches object to selected bone/helper/object.\nSelect ONE bone/helper/object and push this button.\nWARNING!!!\nIf you are trying to attach HI solver to your selected bone/helper/object, MAKE SURE your selected bone/helper/object is NOT inside a container."
-		button DetachObj "Detach" width:50 align:#right tooltip:"Detaches selected attached objects or attached objects for selected bones/helpers/objects.\nWorks only for objects that were attached by this script!\nSelect all needed bones/helpers/objects and push this button."
-		button CreateKeysFAO "Bake for all selected" tooltip:"Creates anim keys for all selected attached objects or attached objects for selected bones/helpers/objects.\nWorks only for objects that were attached by this script!\nUse this before animation export.\nSelect all needed bones/helpers/objects and push this button."
+		button AttachObjTo "Attach to selected" width:97 height:16 align:#left across:2 tooltip:"Attaches object to selected bone/helper/object.\nSelect ONE bone/helper/object and push this button.\nWARNING!!!\nIf you are trying to attach HI solver to your selected bone/helper/object, MAKE SURE your selected bone/helper/object is NOT inside a container."
+		button DetachObj "Detach" width:50 height:16 align:#right tooltip:"Detaches selected attached objects or attached objects for selected bones/helpers/objects.\nWorks only for objects that were attached by this script!\nSelect all needed bones/helpers/objects and push this button."
+		button CreateKeysFAO "Bake for all selected" height:16 tooltip:"Creates anim keys for all selected attached objects or attached objects for selected bones/helpers/objects.\nWorks only for objects that were attached by this script!\nUse this before animation export.\nSelect all needed bones/helpers/objects and push this button."
 		checkbox chkbx_DetailedAOAnim "Detailed" align:#left checked:true across:2 tooltip:"Bakes more detailed animation by adding extra anim keys every few frames. Choose frame interval in the \"Int\" field."
 		spinner spn_DetailedAOAnim "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45
 	)
@@ -725,19 +784,20 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		checkbox chkbx_ACTrnsfrmKsScale "Scale" align:#right checked:false across:3 tooltip:"Transform type:\nControl the object's scale keys."
 		spinner spn_ACTrnsfrmRangeStartVal "S:" range:[0.0, 999999.0, 0.0] type:#float align:#left across:2 fieldwidth:45 tooltip:"Animation Keys Range Start"
 		spinner spn_ACTrnsfrmRangeEndVal "E:" range:[0.0, 999999.0, 100.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Keys Range End"
-		radiobuttons rb_AnimKeysRange "Anim keyframes range:" labels:#("All", "Set","TimeL") columns:3 tooltip:"You can select the specified keyframes range you want to work with:\n\nAll: Will work with all the keys of the selected object(s).\n\nSet: Will work for the selected keys range you specified above.\n\nTimeL: Will work for the selected keys range you have selected on the animation timeline (or the range between the selected first and the last key on the timeline)."
+		radiobuttons rb_AnimKeysRange "Anim keyframes range:" labels:#("All", "Set","TimeL") columns:3 tooltip:"You can select the specified keyframes range you want to work with:\n\nAll: Will work with all the keys of the selected object(s).\n\nSet: Will work for the selected keys range you specified above (from Range Start to Range End).\n\nTimeL: Will work for the selected keys range you have selected on the animation timeline (or the range between the selected first and the last key on the timeline)."
 		
 		checkbutton ib_CASbutton "Change animation speed:" height:15 width:135 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[0,-3]
-		button CASIncrease "Increase..." width:68 height:16 align:#left across:2 tooltip:"Increases selected animation as many times as specified in right field.\nIf you want slow down the animation by 2 times, then choose \"0,5\" in that field.\nSelect all needed bones/helpers/objects, then select keys range and push this button."
+		button CASIncrease "Increase..." width:68 height:16 align:#left across:2 tooltip:"Increases selected animation's speed as many times as specified in right field.\nIf you want slow down the animation by 2 times, then choose \"0,5\" in that field.\nSelect all needed bones/helpers/objects, then select keys range and push this button."
 		spinner spn_CASIncBy "...by:" range:[0.001, 1000.0, 2.0] type:#float align:#right fieldwidth:45
-		checkbox chkbx_CASAccuracy "Accuracy" align:#left checked:true across:2 tooltip:"Round-up the number of frames of the new animation range to the value that was chosen in the right field.\nIf you increased your animation that has 25,0 frames by 2,0 times then the new range will be 12,5.\nBut if THIS checkbox was checked and value \"1,0\" was chosen - the new range will be 13,0."
+		checkbox chkbx_CASAccuracy "Accuracy" align:#left checked:true across:2 tooltip:"Round-up the number of frames of the new animation range to the value that was chosen in the right field.\nIf you increased your animation's speed that has 25,0 frames by 2,0 times then the new range will be 12,5.\nBut if THIS checkbox was checked and value \"1,0\" was chosen - the new range will be 13,0."
 		spinner spn_CASAccuracyVal "upto:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45
 		
 		checkbutton ib_BakeAKbutton "Additional control:" height:15 width:100 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[0,-3]
 		button BakeObjectsTransformKeys "Bake Keys" width:68 height:16 align:#left across:2 tooltip:"Bakes selected object's transform animation keys.\nSelect all needed bones, choose transform type mode, keys range and frame interval in the right field and push this button."
 		spinner spn_BkTrnsfrmAccuracyVal "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Keys Baking Frame Interval"
-		button SmoothObjectsAnimation "Smooth object's animation" tooltip:"Smoothes selected object's transform animation, makes it a bit less snappy.\nSelect all needed bones, choose transform type mode and keys range and push this button.\nRepeat these steps if you are not yet satisfied the result."
-		button DeleteObjectsTransformKeys "Delete object's transform keys" tooltip:"Deletes selected object's transform animation keys.\nSelect all needed bones, choose transform type mode and keys range and push this button."
+		button SmoothObjectsAnimation "Smooth" width:55 height:16 align:#left across:2 tooltip:"Smoothes selected object's transform animation, makes it a bit less snappy.\nSelect all needed bones, choose transform type mode and keys range and push this button.\nRepeat these steps if you are not yet satisfied the result."
+		spinner spn_SmoothTimesVal "Times:" range:[1, 100000, 1] type:#integer align:#right across:2 fieldwidth:45 tooltip:"How many times you want to smooth your animation."
+		button DeleteObjectsTransformKeys "Delete object's transform keys" height:16 tooltip:"Deletes selected object's transform animation keys.\nSelect all needed bones, choose transform type mode and keys range and push this button."
 	)
 	/*group "Before Export: Delete anim keys"
 	(
@@ -755,12 +815,13 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		local selectionArr = selection as array
 		for s in selectionArr do
 		(
-			if getUserProp s "AOBoneNumber" != undefined do
+			--if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do pgbCountTotal = pgbCountTotal + 1
+			if getUserProp s "AOBoneNumber" != undefined and getUserProp s "AOBoneNumber" != -1 do
 			(
 				local AOSelectNumber = getUserProp s "AOBoneNumber"
 				for obj in objects do
 				(
-					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do selectmore obj
+					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
 				)
 			)
 		)
@@ -771,6 +832,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 			(
 				if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do
 				(
+					local wholeAttachBakingTime = timeStamp()
+					Process_Rollout.lbl_PrcssAAH.text = "Baking attach initialising"
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 					local AObject_Number = getUserProp s "AObjectNumber"
 					local AOBone
 					local AObjecthelper
@@ -825,6 +889,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								local AOAnimRangeEnd
 								if s.position.controller.keys.count > 0 do
 								(
+									local pgbCount = 0
+									local pgbCountTotal = s.position.controller.keys.count
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos: " + s.name
 									AOAnimRangeStart = s.position.controller.keys[1].time
 									if s.position.controller.keys.count > 1 do AOAnimRangeEnd = s.position.controller.keys[s.position.controller.keys.count].time
 									for i = 1 to s.position.controller.keys.count do
@@ -832,13 +899,21 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										at time s.position.controller.keys[i].time
 										(
 											AObjecthelper.transform = s.transform
+											pgbCount = pgbCount + 1
+											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 										)
 									)
 								)
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos (Ok!): " + s.name
+								Process_Rollout.prgb_AAH.value = 0
+								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 								if ClassOf s != targetcamera and ClassOf s != VRayPhysicalCamera then
 								(
 									if s.rotation.controller.keys.count > 0 do
 									(
+										local pgbCount = 0
+										local pgbCountTotal = s.rotation.controller.keys.count
+										Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot: " + s.name
 										if AOAnimRangeStart != undefined then
 										(
 											if AOAnimRangeStart > s.rotation.controller.keys[1].time do AOAnimRangeStart = s.rotation.controller.keys[1].time
@@ -857,9 +932,14 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 											at time s.rotation.controller.keys[i].time
 											(
 												AObjecthelper.transform = s.transform
+												pgbCount = pgbCount + 1
+												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 											)
 										)
 									)
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot (Ok!): " + s.name
+									Process_Rollout.prgb_AAH.value = 0
+									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 								)
 								else
 								(
@@ -893,6 +973,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 									(
 										if AOBone.position.controller.keys.count > 0 do
 										(
+											local pgbCount = 0
+											local pgbCountTotal = AOBone.position.controller.keys.count
+											Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2: " + s.name
 											for i = 1 to AOBone.position.controller.keys.count do
 											(
 												if AOBone.position.controller.keys[i].time > AOAnimRangeStart and AOBone.position.controller.keys[i].time < AOAnimRangeEnd do
@@ -900,12 +983,20 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 													at time AOBone.position.controller.keys[i].time
 													(
 														AObjecthelper.transform = s.transform
+														pgbCount = pgbCount + 1
+														Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 													)
 												)
 											)
 										)
+										Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2 (Ok!): " + s.name
+										Process_Rollout.prgb_AAH.value = 0
+										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 										if AOBone.rotation.controller.keys.count > 0 do
 										(
+											local pgbCount = 0
+											local pgbCountTotal = AOBone.rotation.controller.keys.count
+											Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2: " + s.name
 											for i = 1 to AOBone.rotation.controller.keys.count do
 											(
 												if AOBone.rotation.controller.keys[i].time > AOAnimRangeStart and AOBone.rotation.controller.keys[i].time < AOAnimRangeEnd do
@@ -913,16 +1004,24 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 													at time AOBone.rotation.controller.keys[i].time
 													(
 														AObjecthelper.transform = s.transform
+														pgbCount = pgbCount + 1
+														Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 													)
 												)
 											)
 										)
+										Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2 (Ok!): " + s.name
+										Process_Rollout.prgb_AAH.value = 0
+										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 									)
 								)
 								if bool_DetailedAOAnim and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
 								(
 									if AOAnimRangeStart < AOAnimRangeEnd and (AOAnimRangeEnd - AOAnimRangeStart) > float_DetailedAOAnim do
 									(
+										local pgbCount = 0
+										local pgbCountTotal = (((AOAnimRangeEnd - AOAnimRangeStart)as float)/TicksPerFrame / float_DetailedAOAnim) as integer
+										Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int: " + s.name
 										local DetailedAOAnimCurrentTime = AOAnimRangeStart
 										DetailedAOAnimCurrentTime += float_DetailedAOAnim
 										while DetailedAOAnimCurrentTime < AOAnimRangeEnd do
@@ -930,10 +1029,17 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 											at time DetailedAOAnimCurrentTime
 											(
 												AObjecthelper.transform = s.transform
+												pgbCount = pgbCount + 1
+												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 											)
 											DetailedAOAnimCurrentTime += float_DetailedAOAnim
 										)
+										--local info_str_msg = "total " + (pgbCount as string) + " of " + (pgbCountTotal as string) + " !"
+										--messageBox info_str_msg title:"SUCCESS!"
 									)
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int (Ok!): " + s.name
+									Process_Rollout.prgb_AAH.value = 0
+									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 								)
 							)
 						)
@@ -981,6 +1087,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						(
 							if AObjecthelper.position.controller.keys.count > 0 do
 							(
+								local pgbCount = 0
+								local pgbCountTotal = AObjecthelper.position.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3: " + s.name
 								for i = 1 to AObjecthelper.position.controller.keys.count do
 								(
 									at time AObjecthelper.position.controller.keys[i].time
@@ -991,11 +1100,19 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 											if AObjecthelper.transform.row2.z < 0.0 then s.controller.roll_angle = 180.0+(AObjecthelper.transform.rotation as eulerangles).y
 											else	s.controller.roll_angle = -(AObjecthelper.transform.rotation as eulerangles).y
 										)
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
 								)
 							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3 (Ok!): " + s.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							if AObjecthelper.rotation.controller.keys.count > 0 do
 							(
+								local pgbCount = 0
+								local pgbCountTotal = AObjecthelper.rotation.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3: " + s.name
 								for i = 1 to AObjecthelper.rotation.controller.keys.count do
 								(
 									at time AObjecthelper.rotation.controller.keys[i].time
@@ -1006,13 +1123,24 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 											if AObjecthelper.transform.row2.z < 0.0 then s.controller.roll_angle = 180.0+(AObjecthelper.transform.rotation as eulerangles).y
 											else	s.controller.roll_angle = -(AObjecthelper.transform.rotation as eulerangles).y
 										)
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
 								)
-							)											
+							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3 (Ok!): " + s.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.							
 						)
 					)
 					if AObjecthelper != undefined do delete AObjecthelper
 					deleteKeys s.scale.controller
+					wholeAttachBakingTime = (((timeStamp() - wholeAttachBakingTime) / 1000.0) as string)
+					Process_Rollout.lbl_PrcssAAH.text = "Attch baked in " + wholeAttachBakingTime + "s"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					local info_str_msg = "Attach baked in " + wholeAttachBakingTime + " seconds!"
+					messageBox info_str_msg title:"SUCCESS!"
 				)
 			)
 		)
@@ -1024,6 +1152,10 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 	 
 	fn UpdateAnimRangeStartAndEnd =
 	(
+		Process_Rollout.lbl_PrcssAAH.text = "Updating Anim Range info"
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		local pgbCount = 0
+		local pgbCountTotal = selection.count
 		ACAnimRangeStartKeyframe = undefined
 		ACAnimRangeEndKeyframe = undefined
 		for s in selection do
@@ -1115,12 +1247,18 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 				ACAnimRangeStartKeyframe = 1.0f * spn_ACTrnsfrmRangeStartVal.value
 				ACAnimRangeEndKeyframe = 1.0f * spn_ACTrnsfrmRangeEndVal.value
 			)
-			if ACAnimRangeStartKeyframe == undefined or ACAnimRangeEndKeyframe == undefined or ACAnimRangeStartKeyframe >= ACAnimRangeEndKeyframe do
+			if ACAnimRangeStartKeyframe == undefined or ACAnimRangeEndKeyframe == undefined or ACAnimRangeStartKeyframe >= ACAnimRangeEndKeyframe then
 			(
 				ACAnimRangeStartKeyframe = undefined
 				ACAnimRangeEndKeyframe = undefined
-			)	
+				Process_Rollout.lbl_PrcssAAH.text = "Anim Range not found"
+			)
+			else Process_Rollout.lbl_PrcssAAH.text = "Anim Range found"
+			pgbCount = pgbCount + 1
+			Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 		)
+		Process_Rollout.prgb_AAH.value = 0
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 	)
 	
 	
@@ -1377,12 +1515,20 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 	
 	on DetachObj pressed do
 	(
-		RemoveAOLink 0 0 0.0
+		if selection.count > 0 then
+		(
+			RemoveAOLink 0 0 0.0
+		)
+		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
 
 	on CreateKeysFAO pressed do
 	(
-		RemoveAOLink 1 chkbx_DetailedAOAnim.state spn_DetailedAOAnim.value
+		if selection.count > 0 then
+		(
+			RemoveAOLink 1 chkbx_DetailedAOAnim.state spn_DetailedAOAnim.value
+		)
+		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
 	
 	on CASIncrease pressed do
@@ -1395,11 +1541,13 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 				if spn_CASIncBy.value != 1.0 do
 				(
 					UpdateAnimRangeStartAndEnd() 
-					
 					if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 					(
 						if ACAnimRangeStartKeyframe < ACAnimRangeEndKeyframe do
 						(  
+							local wholeCASIncreaseTime = timeStamp()
+							Process_Rollout.lbl_PrcssAAH.text = "Changing anim speed initialising"
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							local OldAnimStretch = ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe
 							OldAnimStretch = (OldAnimStretch as float)/TicksPerFrame
 							local NewAnimStretchFactor = 1.0 / spn_CASIncBy.value
@@ -1423,10 +1571,13 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							if NewAnimShift != 0.0 do
 							(
 								local NewAnimRangeShift
+								local pgbCount = 0
+								local pgbCountTotal = selection.count
 								if NewAnimShift > 0.0 then
 								(
 									for s in selection do
 									(
+										Process_Rollout.lbl_PrcssAAH.text = "Dec. speed: " + s.name
 										if chkbx_ACTrnsfrmKsPos.state == true and s.position.controller.keys.count > 0 do
 										(
 											for i = s.position.controller.keys.count to 1 by -1 do
@@ -1468,6 +1619,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 										/*scaleshit*/
 										if chkbx_ACTrnsfrmKsScale.state == true and s.scale.controller.keys.count > 0 do
 										(
+											s.scale.controller = ScaleXYZ()
 											for i = s.scale.controller.keys.count to 1 by -1 do
 											(
 												if s.scale.controller.keys[i].time >= ACAnimRangeEndKeyframe then
@@ -1485,12 +1637,16 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 												)
 											)
 										)
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 									)
 								)
 								else
 								( 
 									for s in selection do
 									(
+										Process_Rollout.lbl_PrcssAAH.text = "Inc. speed: " + s.name
 										if chkbx_ACTrnsfrmKsPos.state == true and s.position.controller.keys.count > 0 do
 										(
 											for i = 1 to s.position.controller.keys.count do
@@ -1537,6 +1693,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 										) 
 										if chkbx_ACTrnsfrmKsScale.state == true and s.scale.controller.keys.count > 0 do
 										(
+											s.scale.controller = ScaleXYZ()
 											for i = 1 to s.scale.controller.keys.count do
 											(
 												if s.scale.controller.keys[i].time > ACAnimRangeStartKeyframe do
@@ -1557,9 +1714,18 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 												)
 											)
 										)
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 									)
 								)
 							)
+							wholeCASIncreaseTime = (((timeStamp() - wholeCASIncreaseTime) / 1000.0) as string)
+							Process_Rollout.lbl_PrcssAAH.text = "CAS finished in " + wholeCASIncreaseTime + "s"
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							local info_str_msg = "Anim speed changing finished in " + wholeCASIncreaseTime + " seconds!"
+							messageBox info_str_msg title:"SUCCESS!"
 						)
 					)
 				)
@@ -1580,19 +1746,24 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 				UpdateAnimRangeStartAndEnd()
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
+					local wholeBakingTransformTime = timeStamp()
+					Process_Rollout.lbl_PrcssAAH.text = "Transform Baking initialising"
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 					local BakePointHelper = point size:0.1
 					BakePointHelper.scale.controller = ScaleXYZ()
-					for s in selection do
+					local pgbCount = 0
+					local pgbCountTotal = selection.count
+					with Animate on
 					(
-						deleteKeys BakePointHelper.position.controller
-						deleteKeys BakePointHelper.rotation.controller
-						deleteKeys BakePointHelper.scale.controller
-						with Animate on
+						for s in selection do
 						(
+							deleteKeys BakePointHelper.position.controller
+							deleteKeys BakePointHelper.rotation.controller
+							deleteKeys BakePointHelper.scale.controller
 							local BakeRangeKeysCount = (ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe) / spn_BkTrnsfrmAccuracyVal.value
 							if BakeRangeKeysCount > 0 do
 							(
-							
+								Process_Rollout.lbl_PrcssAAH.text = "Baking: " + s.name
 								if chkbx_ACTrnsfrmKsPos.state == true do
 								(	
 									for i = 0 to BakeRangeKeysCount do
@@ -1704,10 +1875,19 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 										)
 									)
 								)
+								pgbCount = pgbCount + 1
+								Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 							)
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 						)
 					)
 					delete BakePointHelper
+					wholeBakingTransformTime = (((timeStamp() - wholeBakingTransformTime) / 1000.0) as string)
+					Process_Rollout.lbl_PrcssAAH.text = "Tf baked in " + wholeBakingTransformTime + "s"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					local info_str_msg = "Transform baked in " + wholeBakingTransformTime + " seconds!"
+					messageBox info_str_msg title:"SUCCESS!"
 				)
 				SetBackAnimKeys oldAnimKeysState
 			)
@@ -1726,56 +1906,74 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 				UpdateAnimRangeStartAndEnd()
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
-					for s in selection do
+					local wholeSmoothAnimationTime = timeStamp()
+					Process_Rollout.lbl_PrcssAAH.text = "Anim smoothing initialising"
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					local pgbCount = 0
+					local pgbCountTotal = selection.count * spn_SmoothTimesVal.value
+					with Animate on
 					(
-						with Animate on
+						for s in selection do
 						(
-							local BakeRangeKeysCount = (ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe) as integer
-							if BakeRangeKeysCount > 2 do
+							local SmoothRangeKeysCount = (ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe) as integer
+							if SmoothRangeKeysCount > 2 do
 							(
-								local currentSOAKeyTime = 0.0f
-								if chkbx_ACTrnsfrmKsPos.state == true and s.position.controller.keys.count > 0 do
+								for i = 1 to spn_SmoothTimesVal.value do
 								(
-									for i = 1 to s.position.controller.keys.count do
+									Process_Rollout.lbl_PrcssAAH.text = "Smoothing: " + s.name
+									local currentSOAKeyTime = 0.0f
+									if chkbx_ACTrnsfrmKsPos.state == true and s.position.controller.keys.count > 0 do
 									(
-										currentSOAKeyTime = s.position.controller.keys[i].time
-										if currentSOAKeyTime > ACAnimRangeStartKeyframe and ACAnimRangeEndKeyframe > currentSOAKeyTime then
-										( 
-											deletekey s.position.controller i
-											addnewkey s.position.controller currentSOAKeyTime
+										for i = 1 to s.position.controller.keys.count do
+										(
+											currentSOAKeyTime = s.position.controller.keys[i].time
+											if currentSOAKeyTime > ACAnimRangeStartKeyframe and ACAnimRangeEndKeyframe > currentSOAKeyTime then
+											( 
+												deletekey s.position.controller i
+												addnewkey s.position.controller currentSOAKeyTime
+											)
 										)
 									)
-								)
-								
-								if chkbx_ACTrnsfrmKsRot.state == true and s.rotation.controller.keys.count > 0 do
-								(
-									for i = 1 to s.rotation.controller.keys.count do
+									
+									if chkbx_ACTrnsfrmKsRot.state == true and s.rotation.controller.keys.count > 0 do
 									(
-										currentSOAKeyTime = s.rotation.controller.keys[i].time
-										if currentSOAKeyTime > ACAnimRangeStartKeyframe and ACAnimRangeEndKeyframe > currentSOAKeyTime then
-										( 
-											deletekey s.rotation.controller i
-											addnewkey s.rotation.controller currentSOAKeyTime
+										for i = 1 to s.rotation.controller.keys.count do
+										(
+											currentSOAKeyTime = s.rotation.controller.keys[i].time
+											if currentSOAKeyTime > ACAnimRangeStartKeyframe and ACAnimRangeEndKeyframe > currentSOAKeyTime then
+											( 
+												deletekey s.rotation.controller i
+												addnewkey s.rotation.controller currentSOAKeyTime
+											)
 										)
 									)
-								)
-								
-								if chkbx_ACTrnsfrmKsScale.state == true and s.scale.controller.keys.count > 0 do
-								(
-									s.scale.controller = ScaleXYZ()
-									for i = 1 to s.scale.controller.keys.count do
+									
+									if chkbx_ACTrnsfrmKsScale.state == true and s.scale.controller.keys.count > 0 do
 									(
-										currentSOAKeyTime = s.scale.controller.keys[i].time
-										if currentSOAKeyTime > ACAnimRangeStartKeyframe and ACAnimRangeEndKeyframe > currentSOAKeyTime then
-										( 
-											deletekey s.scale.controller i
-											addnewkey s.scale.controller currentSOAKeyTime
+										s.scale.controller = ScaleXYZ()
+										for i = 1 to s.scale.controller.keys.count do
+										(
+											currentSOAKeyTime = s.scale.controller.keys[i].time
+											if currentSOAKeyTime > ACAnimRangeStartKeyframe and ACAnimRangeEndKeyframe > currentSOAKeyTime then
+											( 
+												deletekey s.scale.controller i
+												addnewkey s.scale.controller currentSOAKeyTime
+											)
 										)
 									)
+									pgbCount = pgbCount + 1
+									Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 								)
 							)
 						)
 					)
+					wholeSmoothAnimationTime = (((timeStamp() - wholeSmoothAnimationTime) / 1000.0) as string)
+					Process_Rollout.lbl_PrcssAAH.text = "Smth finished in " + wholeSmoothAnimationTime + "s"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					local info_str_msg = "Anim smooth finished in " + wholeSmoothAnimationTime + " seconds!"
+					messageBox info_str_msg title:"SUCCESS!"
 				)
 				SetBackAnimKeys oldAnimKeysState
 			)
@@ -1794,8 +1992,14 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 				UpdateAnimRangeStartAndEnd()
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
+					local wholeDeleteTransformTime = timeStamp()
+					Process_Rollout.lbl_PrcssAAH.text = "Transform anim deleting initialising"
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					local pgbCount = 0
+					local pgbCountTotal = selection.count
 					for s in selection do
 					(
+						Process_Rollout.lbl_PrcssAAH.text = "Del. keys: " + s.name
 						if rb_AnimKeysRange.state == 1 then
 						(
 							if chkbx_ACTrnsfrmKsPos.state == true do deleteKeys s.position.controller
@@ -1823,7 +2027,15 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 								deleteKeys s.scale.controller #selection
 							)
 						)
+						pgbCount = pgbCount + 1
+						Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 					)
+					wholeDeleteTransformTime = (((timeStamp() - wholeDeleteTransformTime) / 1000.0) as string)
+					Process_Rollout.lbl_PrcssAAH.text = "Del finished in " + wholeDeleteTransformTime + "s"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					local info_str_msg = "Transform anim deleted in " + wholeDeleteTransformTime + " seconds!"
+					messageBox info_str_msg title:"SUCCESS!"
 				)
 				SetBackAnimKeys oldAnimKeysState
 			)
@@ -1842,17 +2054,17 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 (
 	group "Skin Mesh Triggers"
 	(
-		button SMTrigFreeze "Freeze" width:57 align:#left across:2 tooltip:"Freezes/unfreezes skin mesh.\nSelect any bone/helper or skin mesh and push this button."
-		button SMTrigXRay "Transparency" width:90 align:#right tooltip:"Enables/Disables transparency for skin mesh.\nSelect any bone/helper or skin mesh and push this button."
+		button SMTrigFreeze "Freeze" width:57 height:16 align:#left across:2 tooltip:"Freezes/unfreezes skin mesh.\nSelect any bone/helper or skin mesh and push this button.\n\nWARNING!\nFirst time may work slow, but works fast later!"
+		button SMTrigXRay "Transparency" width:90 height:16 align:#right tooltip:"Enables/Disables transparency for skin mesh.\nSelect any bone/helper or skin mesh and push this button.\n\nWARNING!\nFirst time may work slow, but works fast later!"
 	)
 	group "Create/Delete/Bake Controllers"
 	(
-		button CreateHISolver1 "One bone" width:67 align:#left across:2 tooltip:"Creates HI Solver for selected bone.\nSelect ONE bone/helper and push this button."
-		button CreateHISolver2 "Bone + Joint" width:80 align:#right tooltip:"Creates HI Solver for selected bone and its parent joint.\nSelect ONE bone/helper and push this button."
-		button CreateControllers "Create all Controllers" tooltip:"Creates all needed controllers for the hierarchy that belongs to the selected bone.\nSelect ONE bone/helper and push this button."
-		button CreateHISolverEyes "Eyes" width:32 align:#left across:2 tooltip:"Creates HI Solver for selected eye pupils' bones.\nSelect ALL eye pupils' bones/helpers and push this button."
-		button DeleteHISolver "Delete for all selected" width:115 align:#right tooltip:"Deletes selected HI Solvers or HI Solvers for selected bones.\nWorks only for HI Solvers that were created by this script!\nSelect all needed bones or/and HI solvers and push this button."
-		button CreateKeysFAHIB "Bake for all selected" tooltip:"Creates anim keys for all selected bones that uses HI Solvers or for bones that uses selected HI Solvers.\nWorks only for HI Solvers that were created by this script!\nUse this before animation export.\nSelect all needed bones or/and HI solvers and push this button."
+		button CreateHISolver1 "One bone" width:67 height:16 align:#left across:2 tooltip:"Creates HI Solver for selected bone.\nSelect ONE bone/helper and push this button."
+		button CreateHISolver2 "Bone + Joint" width:80 height:16 align:#right tooltip:"Creates HI Solver for selected bone and its parent joint.\nSelect ONE bone/helper and push this button."
+		button CreateControllers "Create all Controllers" height:16 tooltip:"Creates all needed controllers for the hierarchy that belongs to the selected bone.\nSelect ONE bone/helper and push this button."
+		button CreateHISolverEyes "Eyes" width:32 height:16 align:#left across:2 tooltip:"Creates HI Solver for selected eye pupils' bones.\nSelect ALL eye pupils' bones/helpers and push this button."
+		button DeleteHISolver "Delete for all selected" width:115 height:16 align:#right tooltip:"Deletes selected HI Solvers or HI Solvers for selected bones.\nWorks only for HI Solvers that were created by this script!\nSelect all needed bones or/and HI solvers and push this button."
+		button CreateKeysFAHIB "Bake for all selected" height:16 tooltip:"Creates anim keys for all selected bones that uses HI Solvers or for bones that uses selected HI Solvers.\nWorks only for HI Solvers that were created by this script!\nUse this before animation export.\nSelect all needed bones or/and HI solvers and push this button."
 		checkbox chkbx_DetailedHIAnim "Detailed" align:#left checked:true across:2 tooltip:"Bakes more detailed animation by adding extra anim keys every few frames. Choose frame interval in the \"Int\" field."
 		spinner spn_DetailedHIAnim "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45
 	)
@@ -2611,13 +2823,10 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 	
 	on SMTrigFreeze pressed do
 	(
-		if selection[1] != undefined then
+		if selection.count > 0 then
 		(
-			local s_Array = selection as array
 			local s = selection[1]
-			clearselection()
-			select s
-			if SuperclassOf s == GeometryClass and (classof s) == Editable_Mesh and (HasSkinModifier s) then
+			if (HasSkinModifier s) then
 			(
 				for obj in s do
 				(
@@ -2627,16 +2836,14 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					)
 					else
 					(
-						freeze obj
 						obj.showFrozenInGray = false
+						freeze obj
 					)
 				)
 			)
 			else-- if getUserProp s "FrameName" != undefined then
 			(
 				local s_Hierarchy = GetAllHierarchy s
-				--SelectAllHierarchy s
-				--local s_Hierarchy = selection as array
 				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
@@ -2648,8 +2855,8 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 						)
 						else
 						(
-							freeze obj
 							obj.showFrozenInGray = false
+							freeze obj
 						)
 					)
 				)
@@ -2659,7 +2866,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					local MeshFound = false
 					for obj in geometry do
 					(
-						if (classof obj) == Editable_Mesh and obj.name == SkinMeshName then
+						if HasSkinModifier s and obj.name == SkinMeshName then
 						(
 							if obj.isFrozen == true then
 							(
@@ -2667,8 +2874,8 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 							)
 							else
 							(
-								freeze obj
 								obj.showFrozenInGray = false
+								freeze obj
 							)
 							MeshFound = true
 						)
@@ -2680,24 +2887,17 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					)
 				)
 			)
-			clearselection()
-			for obj in s_Array do
-			(
-				selectmore obj
-			)
 		)
+		else messageBox "Select ONE bone/helper/skin and THEN push that button!" title:"ERROR"
 	)
 
 	on SMTrigXRay pressed do
 	(
-		if selection[1] != undefined then
+		if selection.count > 0 then
 		(
 			local oldAnimKeysState = GetAndOffAnimKeys()
-			local s_Array = selection as array
 			local s = selection[1]
-			clearselection()
-			select s
-			if SuperclassOf s == GeometryClass and (classof s) == Editable_Mesh and (HasSkinModifier s) then
+			if (HasSkinModifier s) then
 			(
 				for obj in s do
 				(
@@ -2720,8 +2920,6 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			else-- if getUserProp s "FrameName" != undefined then
 			(
 				local s_Hierarchy = GetAllHierarchy s
-				--SelectAllHierarchy s
-				--local s_Hierarchy = selection as array
 				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
@@ -2749,7 +2947,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					local MeshFound = false
 					for obj in geometry do
 					(
-						if (classof obj) == Editable_Mesh and obj.name == SkinMeshName then
+						if HasSkinModifier s and obj.name == SkinMeshName then
 						(
 							if ((getVisController obj) == undefined) do
 							(
@@ -2775,14 +2973,10 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					)
 				)
 			)
-			clearselection()
-			for obj in s_Array do
-			(
-				selectmore obj
-			)
 			SetBackAnimKeys oldAnimKeysState
 			redrawViews()
 		)
+		else messageBox "Select ONE bone/helper/skin and THEN push that button!" title:"ERROR"
 	)
 	
 	on CreateHISolver1 pressed do
@@ -2992,11 +3186,6 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 	(
 		RemoveHISolver 1 chkbx_DetailedHIAnim.state spn_DetailedHIAnim.value
 	)
-	
-	
-	
-	
-	
 	
 	
 )
@@ -3634,12 +3823,12 @@ rollout Hierarchies_Rollout "Bones Conversion" width:132 height:170
 --// INFO ROLLOUT
 /*********************************************************************************************************************************************************************/
 
-rollout Info_Rollout "Info" width:132 height:30
+rollout Info_Rollout "Extra Info" width:132 height:30
 (
 	group "Some Info"
 	(
-		button HelpButton "Help/How-to" across:2 width:90 pos:[13,25] tooltip:"Push this button to see some help info"
-		button AboutButton "About" width:58 pos:[106,25] tooltip:"Push this button to see some extra info"
+		button HelpButton "Help/How-to" across:2 width:90 height:16 pos:[13,25] tooltip:"Push this button to see some help info"
+		button AboutButton "About" width:58 height:16 pos:[106,25] tooltip:"Push this button to see some extra info"
 	)
 
 	on HelpButton pressed do
@@ -3652,9 +3841,9 @@ rollout Info_Rollout "Info" width:132 height:30
 	on AboutButton pressed do
 	(
 		try (DestroyDialog AboutDialog) catch()
-		rollout AboutDialog "Another Animation Helper v.0.98b" width:275 height:315
+		rollout AboutDialog "Another Animation Helper v.0.981b" width:275 height:315
 		(
-			label abd1 "\"Another Animation Helper\" v.0.98b (Open Beta)" align:#left
+			label abd1 "\"Another Animation Helper\" v.0.981b (Open Beta)" align:#left
 			label abd2 ""
 			label abd3 "Made by Shagg_E, 2017-2022:" align:#left
 			HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
@@ -3687,7 +3876,8 @@ rollout Info_Rollout "Info" width:132 height:30
 /*********************************************************************************************************************************************************************/
 
 try (closeRolloutFloater AAHWindow) catch ()
-AAHWindow = NewRolloutFloater "AA Helper" 190 805 50 100
+AAHWindow = NewRolloutFloater "AA Helper" 190 812 50 100
+addRollout Process_Rollout AAHWindow --rolledUp:true
 addRollout Rig_Tuner_Rollout AAHWindow rolledUp:true
 addRollout Main_Anim_Rollout AAHWindow --rolledUp:true
 addRollout Body_Anim_Rollout AAHWindow --rolledUp:true
