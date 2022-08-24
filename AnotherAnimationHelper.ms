@@ -9,6 +9,7 @@ global NewAO_Number = 0
 global NewBiped_Number = 1000
 global NewSM_Number = 0
 global Rig_Tuner_Rollout
+global AAHHelperLayer
 callbacks.removeScripts id:#rigtuner
 callbacks.removeScripts id:#processinfo
 
@@ -20,6 +21,20 @@ struct CharacterHierarchy (spinelinks, leglinks, taillinks, fingersnumber, finge
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+
+fn UpdateOrCreateAAHHelperLayer =
+(
+	--local layerName = "AAH Temp Helpers Layer"
+	AAHHelperLayer = LayerManager.getLayerFromName "!AAH Temp Helpers Layer"--layerName
+	--AAHHelperLayer.nodes &thenodes
+	--select thenodes
+	if AAHHelperLayer == undefined do
+	(
+		AAHHelperLayer = LayerManager.newLayer()
+		AAHHelperLayer.setname "!AAH Temp Helpers Layer"
+		AAHHelperLayer.isHidden = true
+	)
+)
 
 fn IncreaseBHNumber =
 (
@@ -400,36 +415,40 @@ fn GetSkinMeshes selectedBones =
 				)	
 				else
 				(
+					local skTryCatchNumberOfBones
 					max modify mode
 					for sk in obj.modifiers where iskindof sk Skin while shitFound == false do
 					(
 						modpanel.setcurrentobject sk
 						local sknodes = for n in (refs.dependson sk) where isvalidnode n collect n
-						
-						for i=1 to skinops.getnumberbones sk while shitFound == false do 
+						try (skTryCatchNumberOfBones = skinops.getnumberbones sk) catch () --some skinned meshes may cause bugs so that's why it's try-catch
+						if skTryCatchNumberOfBones != undefined do
 						(
-							sknname = skinops.getbonename sk i 0
-							
-							for k = 1 to sknodes.count while shitFound == false do
+							for i=1 to skTryCatchNumberOfBones while shitFound == false do 
 							(
-								if shitFound == false and stricmp sknname sknodes[k].name == 0 do
+								sknname = skinops.getbonename sk i 0
+								
+								for k = 1 to sknodes.count while shitFound == false do
 								(
-									for l = 1 to selectedBones.count while shitFound == false do
+									if shitFound == false and stricmp sknname sknodes[k].name == 0 do
 									(
-										if shitFound == false and sknodes[k] == selectedBones[l] do
+										for l = 1 to selectedBones.count while shitFound == false do
 										(
-											append relatedSkins obj
-											if getUserProp selectedBones[l] "SkinMeshNumber" == undefined then
+											if shitFound == false and sknodes[k] == selectedBones[l] do
 											(
-												IncreaseSkinMeshNumber()
-												setUserProp obj "SkinMeshNumber" NewSM_Number
-												for m = 1 to selectedBones.count do
+												append relatedSkins obj
+												if getUserProp selectedBones[l] "SkinMeshNumber" == undefined then
 												(
-													setUserProp selectedBones[m] "SkinMeshNumber" NewSM_Number
+													IncreaseSkinMeshNumber()
+													setUserProp obj "SkinMeshNumber" NewSM_Number
+													for m = 1 to selectedBones.count do
+													(
+														setUserProp selectedBones[m] "SkinMeshNumber" NewSM_Number
+													)
 												)
+												else setUserProp obj "SkinMeshNumber" (getUserProp selectedBones[l] "SkinMeshNumber")
+												shitFound = true
 											)
-											else setUserProp obj "SkinMeshNumber" (getUserProp selectedBones[l] "SkinMeshNumber")
-											shitFound = true
 										)
 									)
 								)
@@ -774,7 +793,7 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		button AttachObjTo "Attach to selected" width:97 height:16 align:#left across:2 tooltip:"Attaches object to selected bone/helper/object.\nSelect ONE bone/helper/object and push this button.\nWARNING!!!\nIf you are trying to attach HI solver to your selected bone/helper/object, MAKE SURE your selected bone/helper/object is NOT inside a container."
 		button DetachObj "Detach" width:50 height:16 align:#right tooltip:"Detaches selected attached objects or attached objects for selected bones/helpers/objects.\nWorks only for objects that were attached by this script!\nSelect all needed bones/helpers/objects and push this button."
 		button CreateKeysFAO "Bake for all selected" height:16 tooltip:"Creates anim keys for all selected attached objects or attached objects for selected bones/helpers/objects.\nWorks only for objects that were attached by this script!\nUse this before animation export.\nSelect all needed bones/helpers/objects and push this button."
-		checkbox chkbx_DetailedAOAnim "Detailed" align:#left checked:true across:2 tooltip:"Bakes more detailed animation by adding extra anim keys every few frames. Choose frame interval in the \"Int\" field."
+		checkbox chkbx_DetailedAOAnim "Detailed" align:#left checked:true across:2 tooltip:"Bakes more detailed animation by adding extra anim keys every few frames. Choose frame interval in the \"Int\" field.\nDisable ONLY if you're know what you're doing and you want to get the less detailed baked anim depending on current attached object's animation keys and the keys of its current parent object!"
 		spinner spn_DetailedAOAnim "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45
 	)
 	group "Animation control"
@@ -823,8 +842,19 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 				(
 					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
 				)
+				for obj in helpers do
+				(
+					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
+				)
 			)
 		)
+		UpdateOrCreateAAHHelperLayer()
+		local isThereAZeroKeyAtAllpos = false
+		local isThereAZeroKeyAtAllrot = false
+		local isThereAZeroKeyAtAllscl = false
+		--AAHHelperLayer 
+		--AAHHelperLayer.nodes &thenodes
+		--select thenodes
 		selectionArr = selection as array
 		for s in selectionArr do
 		(
@@ -842,13 +872,14 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					(
 						if getUserProp AOBAll "AOBoneNumber" == AObject_Number do AOBone = AOBAll
 					)
-					for AOHAll in helpers do
+					for AOHAll in helpers do --AAHHelperLayer.nodes do--helpers do
 					(
 						if getUserProp AOHAll "AOHelperNumber" == AObject_Number do AObjecthelper = AOHAll
 					)
 					if BakeAOAnimFlag == 1 and AObjecthelper != undefined do
 					(
-						if s.position.controller.keys.count > 0 or s.rotation.controller.keys.count > 0 do
+						--if s.position.controller.keys.count > 0 or s.rotation.controller.keys.count > 0 or s.scale.controller.keys.count > 0 do
+						if AObjecthelper != undefined do--temp stupid condition, duplicate of the above one, delete later
 						(
 							if s.position.controller.keys.count > 0 do
 							(
@@ -858,6 +889,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								deselectKeys AObjecthelper.rotation.controller
 								selectKeys AObjecthelper.rotation.controller s.position.controller.keys[1].time s.position.controller.keys[s.position.controller.keys.count].time
 								deleteKeys AObjecthelper.rotation.controller #selection
+								deselectKeys AObjecthelper.scale.controller
+								selectKeys AObjecthelper.scale.controller s.position.controller.keys[1].time s.position.controller.keys[s.position.controller.keys.count].time
+								deleteKeys AObjecthelper.scale.controller #selection
 							)
 							if ClassOf s != targetcamera and ClassOf s != VRayPhysicalCamera then
 							(
@@ -869,10 +903,25 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 									deselectKeys AObjecthelper.rotation.controller
 									selectKeys AObjecthelper.rotation.controller s.rotation.controller.keys[1].time s.rotation.controller.keys[s.rotation.controller.keys.count].time
 									deleteKeys AObjecthelper.rotation.controller #selection
+									deselectKeys AObjecthelper.scale.controller
+									selectKeys AObjecthelper.scale.controller s.rotation.controller.keys[1].time s.rotation.controller.keys[s.rotation.controller.keys.count].time
+									deleteKeys AObjecthelper.scale.controller #selection
 								)
 							)
 							else
 							(
+								if s.controller.roll_angle.controller.keys.count > 0 do
+								(
+									deselectKeys AObjecthelper.position.controller
+									selectKeys AObjecthelper.position.controller s.controller.roll_angle.controller.keys[1].time s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
+									deleteKeys AObjecthelper.position.controller #selection
+									deselectKeys AObjecthelper.rotation.controller
+									selectKeys AObjecthelper.rotation.controller s.controller.roll_angle.controller.keys[1].time s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
+									deleteKeys AObjecthelper.rotation.controller #selection
+									deselectKeys AObjecthelper.scale.controller
+									selectKeys AObjecthelper.scale.controller s.controller.roll_angle.controller.keys[1].time s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
+									deleteKeys AObjecthelper.scale.controller #selection
+								)
 								/*if s.controller.roll_angle.keys.count > 0 do
 								(
 									deselectKeys AObjecthelper.position.controller
@@ -883,11 +932,50 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 									deleteKeys AObjecthelper.rotation.controller #selection
 								)*/
 							)
+							if s.scale.controller.keys.count > 0 do
+							(
+								deselectKeys AObjecthelper.position.controller
+								selectKeys AObjecthelper.position.controller s.scale.controller.keys[1].time s.scale.controller.keys[s.scale.controller.keys.count].time
+								deleteKeys AObjecthelper.position.controller #selection
+								deselectKeys AObjecthelper.rotation.controller
+								selectKeys AObjecthelper.rotation.controller s.scale.controller.keys[1].time s.scale.controller.keys[s.scale.controller.keys.count].time
+								deleteKeys AObjecthelper.rotation.controller #selection
+								deselectKeys AObjecthelper.scale.controller
+								selectKeys AObjecthelper.scale.controller s.scale.controller.keys[1].time s.scale.controller.keys[s.scale.controller.keys.count].time
+								deleteKeys AObjecthelper.scale.controller #selection
+							)
+							
+							if AObjecthelper.position.controller.keys.count > 0 do 
+							(
+								for i = 1 to AObjecthelper.position.controller.keys.count do
+								(
+									if AObjecthelper.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+								)
+							)
+							
+							if AObjecthelper.rotation.controller.keys.count > 0 do 
+							(
+								for i = 1 to AObjecthelper.rotation.controller.keys.count do
+								(
+									if AObjecthelper.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+								)
+							)
+							
+							if AObjecthelper.scale.controller.keys.count > 0 do 
+							(
+								for i = 1 to AObjecthelper.scale.controller.keys.count do
+								(
+									if AObjecthelper.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+								)
+							)
+							
 							with Animate on
 							(
 								local AOAnimRangeStart
 								local AOAnimRangeEnd
-								if s.position.controller.keys.count > 0 do
+								
+								--Start of current object animation baking
+								if s.position.controller.keys.count > 0 do 
 								(
 									local pgbCount = 0
 									local pgbCountTotal = s.position.controller.keys.count
@@ -896,9 +984,13 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 									if s.position.controller.keys.count > 1 do AOAnimRangeEnd = s.position.controller.keys[s.position.controller.keys.count].time
 									for i = 1 to s.position.controller.keys.count do
 									(
+										if s.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 										at time s.position.controller.keys[i].time
 										(
-											AObjecthelper.transform = s.transform
+											--AObjecthelper.transform = s.transform
+											in coordsys world AObjecthelper.position.x = in coordsys world s.position.x
+											in coordsys world AObjecthelper.position.y = in coordsys world s.position.y
+											in coordsys world AObjecthelper.position.z = in coordsys world s.position.z
 											pgbCount = pgbCount + 1
 											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 										)
@@ -929,9 +1021,12 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										)
 										for i = 1 to s.rotation.controller.keys.count do
 										(
+											if s.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 											at time s.rotation.controller.keys[i].time
 											(
-												AObjecthelper.transform = s.transform
+												--AObjecthelper.transform = s.transform
+												--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world s.rotation.controller.value
+												in coordsys world AObjecthelper.rotation.controller.value = s.transform as quat
 												pgbCount = pgbCount + 1
 												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 											)
@@ -943,6 +1038,41 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								)
 								else
 								(
+									if s.controller.roll_angle.controller.keys.count > 0 do
+									(
+										local pgbCount = 0
+										local pgbCountTotal = s.controller.roll_angle.controller.keys.count
+										Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll: " + s.name
+										if AOAnimRangeStart != undefined then
+										(
+											if AOAnimRangeStart > s.controller.roll_angle.controller.keys[1].time do AOAnimRangeStart = s.controller.roll_angle.controller.keys[1].time
+										)
+										else AOAnimRangeStart = s.controller.roll_angle.controller.keys[1].time
+										if s.controller.roll_angle.controller.keys.count > 1 do
+										(
+											if AOAnimRangeEnd != undefined then
+											(
+												if AOAnimRangeEnd < s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time do AOAnimRangeEnd = s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
+											)
+											else AOAnimRangeEnd = s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
+										)
+										for i = 1 to s.controller.roll_angle.controller.keys.count do
+										(
+											if s.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+											at time s.controller.roll_angle.controller.keys[i].time
+											(
+												--AObjecthelper.transform = s.transform
+												--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world s.rotation.controller.value
+												in coordsys world AObjecthelper.transform = in coordsys world s.transform
+												pgbCount = pgbCount + 1
+												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+											)
+										)
+									)
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll (Ok!): " + s.name
+									Process_Rollout.prgb_AAH.value = 0
+									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+									
 									/*if s.controller.roll_angle.keys.count > 0 do
 									(
 										if AOAnimRangeStart != undefined then
@@ -967,6 +1097,45 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										)
 									)*/
 								)
+								
+								if s.scale.controller.keys.count > 0 do
+								(
+									local pgbCount = 0
+									local pgbCountTotal = s.scale.controller.keys.count
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl: " + s.name
+									if AOAnimRangeStart != undefined then
+									(
+										if AOAnimRangeStart > s.scale.controller.keys[1].time do AOAnimRangeStart = s.scale.controller.keys[1].time
+									)
+									else AOAnimRangeStart = s.scale.controller.keys[1].time
+									if s.scale.controller.keys.count > 1 do
+									(
+										if AOAnimRangeEnd != undefined then
+										(
+											if AOAnimRangeEnd < s.scale.controller.keys[s.scale.controller.keys.count].time do AOAnimRangeEnd = s.scale.controller.keys[s.scale.controller.keys.count].time
+										)
+										else AOAnimRangeEnd = s.scale.controller.keys[s.scale.controller.keys.count].time
+									)
+									for i = 1 to s.scale.controller.keys.count do
+									(
+										if s.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+										at time s.scale.controller.keys[i].time
+										(
+											--AObjecthelper.transform = s.transform
+											--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world s.rotation.controller.value
+											in coordsys world AObjecthelper.scale.x = in coordsys world s.scale.x
+											in coordsys world AObjecthelper.scale.y = in coordsys world s.scale.y
+											in coordsys world AObjecthelper.scale.z = in coordsys world s.scale.z
+											pgbCount = pgbCount + 1
+											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+										)
+									)
+								)
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl (Ok!): " + s.name
+								Process_Rollout.prgb_AAH.value = 0
+								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+
+								--Start of current object animation baking depending on target transform (attach parent bone/object)
 								if AOBone != undefined and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
 								(
 									if AOAnimRangeStart < AOAnimRangeEnd do
@@ -980,9 +1149,10 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 											(
 												if AOBone.position.controller.keys[i].time > AOAnimRangeStart and AOBone.position.controller.keys[i].time < AOAnimRangeEnd do
 												(
+													if AOBone.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 													at time AOBone.position.controller.keys[i].time
 													(
-														AObjecthelper.transform = s.transform
+														in coordsys world AObjecthelper.transform = in coordsys world s.transform
 														pgbCount = pgbCount + 1
 														Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 													)
@@ -992,29 +1162,82 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2 (Ok!): " + s.name
 										Process_Rollout.prgb_AAH.value = 0
 										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-										if AOBone.rotation.controller.keys.count > 0 do
+										if ClassOf AOBone != targetcamera and ClassOf AOBone != VRayPhysicalCamera then
+										(
+											if AOBone.rotation.controller.keys.count > 0 do
+											(
+												local pgbCount = 0
+												local pgbCountTotal = AOBone.rotation.controller.keys.count
+												Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2: " + s.name
+												for i = 1 to AOBone.rotation.controller.keys.count do
+												(
+													if AOBone.rotation.controller.keys[i].time > AOAnimRangeStart and AOBone.rotation.controller.keys[i].time < AOAnimRangeEnd do
+													(
+														if AOBone.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+														at time AOBone.rotation.controller.keys[i].time
+														(
+															in coordsys world AObjecthelper.transform = in coordsys world s.transform
+															pgbCount = pgbCount + 1
+															Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+														)
+													)
+												)
+											)
+											Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2 (Ok!): " + s.name
+											Process_Rollout.prgb_AAH.value = 0
+											try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+										)
+										else
+										(
+											if AOBone.controller.roll_angle.controller.keys.count > 0 do
+											(
+												local pgbCount = 0
+												local pgbCountTotal = AOBone.controller.roll_angle.controller.keys.count
+												Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll2: " + s.name
+												for i = 1 to AOBone.controller.roll_angle.controller.keys.count do
+												(
+													if AOBone.controller.roll_angle.controller.keys[i].time > AOAnimRangeStart and AOBone.controller.roll_angle.controller.keys[i].time < AOAnimRangeEnd do
+													(
+														if AOBone.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+														at time AOBone.controller.roll_angle.controller.keys[i].time
+														(
+															in coordsys world AObjecthelper.transform = in coordsys world s.transform
+															pgbCount = pgbCount + 1
+															Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+														)
+													)
+												)
+											)
+											Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll2 (Ok!): " + s.name
+											Process_Rollout.prgb_AAH.value = 0
+											try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+										)
+										if AOBone.scale.controller.keys.count > 0 do
 										(
 											local pgbCount = 0
-											local pgbCountTotal = AOBone.rotation.controller.keys.count
-											Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2: " + s.name
-											for i = 1 to AOBone.rotation.controller.keys.count do
+											local pgbCountTotal = AOBone.scale.controller.keys.count
+											Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2: " + s.name
+											for i = 1 to AOBone.scale.controller.keys.count do
 											(
-												if AOBone.rotation.controller.keys[i].time > AOAnimRangeStart and AOBone.rotation.controller.keys[i].time < AOAnimRangeEnd do
+												if AOBone.scale.controller.keys[i].time > AOAnimRangeStart and AOBone.scale.controller.keys[i].time < AOAnimRangeEnd do
 												(
-													at time AOBone.rotation.controller.keys[i].time
+													if AOBone.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+													at time AOBone.scale.controller.keys[i].time
 													(
-														AObjecthelper.transform = s.transform
+														in coordsys world AObjecthelper.transform = in coordsys world s.transform
 														pgbCount = pgbCount + 1
 														Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 													)
 												)
 											)
 										)
-										Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2 (Ok!): " + s.name
+										Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2 (Ok!): " + s.name
 										Process_Rollout.prgb_AAH.value = 0
 										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 									)
 								)
+								
+								--Start of current object animation baking depending detailed interval
 								if bool_DetailedAOAnim and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
 								(
 									if AOAnimRangeStart < AOAnimRangeEnd and (AOAnimRangeEnd - AOAnimRangeStart) > float_DetailedAOAnim do
@@ -1023,12 +1246,18 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										local pgbCountTotal = (((AOAnimRangeEnd - AOAnimRangeStart)as float)/TicksPerFrame / float_DetailedAOAnim) as integer
 										Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int: " + s.name
 										local DetailedAOAnimCurrentTime = AOAnimRangeStart
-										DetailedAOAnimCurrentTime += float_DetailedAOAnim
-										while DetailedAOAnimCurrentTime < AOAnimRangeEnd do
+										--DetailedAOAnimCurrentTime += float_DetailedAOAnim
+										while DetailedAOAnimCurrentTime <= AOAnimRangeEnd do
 										(
+											if DetailedAOAnimCurrentTime == 0.0f do
+											(
+												isThereAZeroKeyAtAllpos = true
+												isThereAZeroKeyAtAllrot = true
+												isThereAZeroKeyAtAllscl = true
+											)
 											at time DetailedAOAnimCurrentTime
 											(
-												AObjecthelper.transform = s.transform
+												in coordsys world AObjecthelper.transform = in coordsys world s.transform
 												pgbCount = pgbCount + 1
 												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 											)
@@ -1042,6 +1271,24 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 								)
 							)
+							if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							(
+								deselectKeys AObjecthelper.position.controller
+								selectKeys AObjecthelper.position.controller 0.0f
+								deleteKeys AObjecthelper.position.controller #selection
+							)	
+							if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							(	
+								deselectKeys AObjecthelper.rotation.controller
+								selectKeys AObjecthelper.rotation.controller 0.0f
+								deleteKeys AObjecthelper.rotation.controller #selection
+							)	
+							if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							(	
+								deselectKeys AObjecthelper.scale.controller
+								selectKeys AObjecthelper.scale.controller 0.0f
+								deleteKeys AObjecthelper.scale.controller #selection
+							)
 						)
 					)
 					setUserProp s "AObjectNumber" -1
@@ -1049,6 +1296,14 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					(
 						local AOOriginalParent
 						for AOAllO in objects do
+						(
+							if getUserProp AOAllO "AOParentNumber" == AObject_Number do
+							(
+								AOOriginalParent = AOAllO
+								setUserProp AOAllO "AOParentNumber" -1
+							)
+						)
+						for AOAllO in helpers do
 						(
 							if getUserProp AOAllO "AOParentNumber" == AObject_Number do
 							(
@@ -1068,7 +1323,8 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					else
 					(
 						--deleteKeys s.controller.roll_angle.controller #allKeys
-						s.controller.roll_angle.controller = bezier_float()
+						
+						/*s.controller.roll_angle.controller = bezier_float()
 						for AOAllO in objects do
 						(
 							if isValidNode AOAllO do
@@ -1080,11 +1336,19 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								)
 							)
 						)
+						*/
+						deleteKeys s.controller.roll_angle.controller #allKeys
 					)
+					deleteKeys s.scale.controller #allKeys
+					isThereAZeroKeyAtAllpos = false
+					isThereAZeroKeyAtAllrot = false
+					isThereAZeroKeyAtAllscl = false
 					with Animate on
 					(
 						if AObjecthelper != undefined do
 						(
+							
+							--Start of final animation baking/restoring
 							if AObjecthelper.position.controller.keys.count > 0 do
 							(
 								local pgbCount = 0
@@ -1092,14 +1356,13 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3: " + s.name
 								for i = 1 to AObjecthelper.position.controller.keys.count do
 								(
+									if AObjecthelper.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 									at time AObjecthelper.position.controller.keys[i].time
 									(
-										s.transform = AObjecthelper.transform
-										if ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera do
-										(
-											if AObjecthelper.transform.row2.z < 0.0 then s.controller.roll_angle = 180.0+(AObjecthelper.transform.rotation as eulerangles).y
-											else	s.controller.roll_angle = -(AObjecthelper.transform.rotation as eulerangles).y
-										)
+										--s.transform = AObjecthelper.transform
+										in coordsys world s.position.x = in coordsys world AObjecthelper.position.x
+										in coordsys world s.position.y = in coordsys world AObjecthelper.position.y
+										in coordsys world s.position.z = in coordsys world AObjecthelper.position.z
 										pgbCount = pgbCount + 1
 										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
@@ -1115,14 +1378,17 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3: " + s.name
 								for i = 1 to AObjecthelper.rotation.controller.keys.count do
 								(
+									if AObjecthelper.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 									at time AObjecthelper.rotation.controller.keys[i].time
 									(
-										s.transform = AObjecthelper.transform
-										if ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera do
+										--s.transform = AObjecthelper.transform
+										if ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera then
 										(
 											if AObjecthelper.transform.row2.z < 0.0 then s.controller.roll_angle = 180.0+(AObjecthelper.transform.rotation as eulerangles).y
 											else	s.controller.roll_angle = -(AObjecthelper.transform.rotation as eulerangles).y
 										)
+										--else in coordsys world s.rotation.controller.value = in coordsys world AObjecthelper.rotation.controller.value
+										else in coordsys world s.rotation.controller.value = AObjecthelper.transform as quat
 										pgbCount = pgbCount + 1
 										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
@@ -1130,11 +1396,51 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 							)
 							Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3 (Ok!): " + s.name
 							Process_Rollout.prgb_AAH.value = 0
-							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.							
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							if AObjecthelper.scale.controller.keys.count > 0 do
+							(
+								local pgbCount = 0
+								local pgbCountTotal = AObjecthelper.scale.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl3: " + s.name
+								for i = 1 to AObjecthelper.scale.controller.keys.count do
+								(
+									if AObjecthelper.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+									at time AObjecthelper.scale.controller.keys[i].time
+									(
+										--s.transform = AObjecthelper.transform
+										in coordsys world s.scale.x = in coordsys world AObjecthelper.scale.x
+										in coordsys world s.scale.y = in coordsys world AObjecthelper.scale.y
+										in coordsys world s.scale.z = in coordsys world AObjecthelper.scale.z
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									)
+								)
+							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl3 (Ok!): " + s.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 						)
 					)
+					if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+					(
+						deselectKeys s.position.controller
+						selectKeys s.position.controller 0.0f
+						deleteKeys s.position.controller #selection
+					)	
+					if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+					(	
+						deselectKeys s.rotation.controller
+						selectKeys s.rotation.controller 0.0f
+						deleteKeys s.rotation.controller #selection
+					)	
+					if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+					(	
+						deselectKeys s.scale.controller
+						selectKeys s.scale.controller 0.0f
+						deleteKeys s.scale.controller #selection
+					)
 					if AObjecthelper != undefined do delete AObjecthelper
-					deleteKeys s.scale.controller
+					--deleteKeys s.scale.controller
 					wholeAttachBakingTime = (((timeStamp() - wholeAttachBakingTime) / 1000.0) as string)
 					Process_Rollout.lbl_PrcssAAH.text = "Attch baked in " + wholeAttachBakingTime + "s"
 					Process_Rollout.prgb_AAH.value = 0
@@ -1370,12 +1676,13 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					(
 						local rosOldParent = s.parent
 						if rosOldParent != undefined do s.parent = undefined
-						s.scale = [1,1,1]
-						local objTm=s.transform
+						ResetScale s -- mapped method
+						in coordsys parent s.scale = [1,1,1]
+						local objTm= in coordsys parent s.transform
 						local objTmX=normalize objTm.row1
 						local objTmY=normalize objTm.row2
 						local objTmZ=normalize (cross objTmX objTmY) --Rebuild the Z to orthogonalize the matrix.
-						s.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
+						in coordsys parent s.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
 						if rosOldParent != undefined do s.parent = rosOldParent
 					)
 				)
@@ -1400,6 +1707,12 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					select pickedObject
 					IncreaseAONumber()
 					local pohelper = point size:0.1
+					pohelper.name = "AO_" + pickedObject.name + " old anim"
+					UpdateOrCreateAAHHelperLayer()
+					AAHHelperLayer.addnode pohelper
+					local isThereAZeroKeyAtAllpos = false
+					local isThereAZeroKeyAtAllrot = false
+					local isThereAZeroKeyAtAllscl = false
 					with Animate on
 					(
 						if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then
@@ -1408,9 +1721,18 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 							(
 								for i = 1 to pickedObject.rotation.controller.keys.count do
 								(
+									if pickedObject.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 									at time pickedObject.rotation.controller.keys[i].time
 									(
-										pohelper.transform = pickedObject.transform
+										--pohelper.transform = pickedObject.transform
+										--in coordsys world pohelper.rotation.controller.value = in coordsys world pickedObject.rotation.controller.value
+										
+										--if pickedObject.parent != undefined then
+										--	in coordsys parent pohelper.rotation.controller.value = (pickedObject.transform * (inverse pickedObject.parent.transform)) as quat
+										--else
+										--	in coordsys parent pohelper.rotation.controller.value = pickedObject.transform as quat
+										
+										in coordsys world pohelper.rotation.controller.value = pickedObject.transform as quat
 									)
 								)
 							)
@@ -1418,7 +1740,7 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 							(
 								at time sliderTime
 								(
-									pohelper.transform = pickedObject.transform
+									in coordsys world pohelper.transform = in coordsys world pickedObject.transform
 								)
 							)
 						)
@@ -1428,9 +1750,11 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 							(
 								for i = 1 to pickedObject.controller.roll_angle.controller.keys.count do
 								(
+									if pickedObject.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 									at time pickedObject.controller.roll_angle.controller.keys[i].time
 									(
-										pohelper.transform = pickedObject.transform
+										--pohelper.transform = pickedObject.transform
+										in coordsys world pohelper.transform = in coordsys world pickedObject.transform
 									)
 								)
 							)
@@ -1438,7 +1762,8 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 							(
 								at time sliderTime
 								(
-									pohelper.transform = pickedObject.transform
+									--pohelper.transform = pickedObject.transform
+									in coordsys world pohelper.transform = in coordsys world pickedObject.transform
 								)
 							)
 						)
@@ -1446,9 +1771,13 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						(
 							for i = 1 to pickedObject.position.controller.keys.count do
 							(
+								if pickedObject.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 								at time pickedObject.position.controller.keys[i].time
 								(
-									pohelper.transform = pickedObject.transform
+									--pohelper.transform = pickedObject.transform
+									in coordsys world pohelper.position.x = in coordsys world pickedObject.position.x
+									in coordsys world pohelper.position.y = in coordsys world pickedObject.position.y
+									in coordsys world pohelper.position.z = in coordsys world pickedObject.position.z
 								)
 							)
 						)
@@ -1456,20 +1785,69 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						(
 							at time sliderTime
 							(
-								pohelper.transform = pickedObject.transform
+								--pohelper.transform = pickedObject.transform
+								in coordsys world pohelper.transform = in coordsys world pickedObject.transform
+							)
+						)
+						if pickedObject.scale.controller.keys.count > 0 then
+						(
+							for i = 1 to pickedObject.scale.controller.keys.count do
+							(
+								if pickedObject.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+								at time pickedObject.scale.controller.keys[i].time
+								(
+									--pohelper.transform = pickedObject.transform
+									in coordsys world pohelper.scale.x = in coordsys world pickedObject.scale.x
+									in coordsys world pohelper.scale.y = in coordsys world pickedObject.scale.y
+									in coordsys world pohelper.scale.z = in coordsys world pickedObject.scale.z
+								)
+							)
+						)
+						else
+						(
+							at time sliderTime
+							(
+								--pohelper.transform = pickedObject.transform
+								in coordsys world pohelper.transform = in coordsys world pickedObject.transform
 							)
 						)
 					)
+					if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+					(
+						deselectKeys pohelper.position.controller
+						selectKeys pohelper.position.controller 0.0f
+						deleteKeys pohelper.position.controller #selection
+					)
+					if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+					(
+						deselectKeys pohelper.rotation.controller
+						selectKeys pohelper.rotation.controller 0.0f
+						deleteKeys pohelper.rotation.controller #selection
+					)
+					if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+					(
+						deselectKeys pohelper.scale.controller
+						selectKeys pohelper.scale.controller 0.0f
+						deleteKeys pohelper.scale.controller #selection
+					)
 					setUserProp pohelper "AOHelperNumber" NewAO_Number
-					maxOps.setKeyMode = true
+					--maxOps.setKeyMode = true
 					if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then deleteKeys pickedObject.rotation.controller #allKeys
 					else deleteKeys pickedObject.controller.roll_angle.controller #allKeys
 					deleteKeys pickedObject.position.controller #allKeys
+					deleteKeys pickedObject.scale.controller #allKeys
 					at time sliderTime pickedObject.transform= pohelper.transform
-					if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera do addNewKey pickedObject.rotation.controller sliderTime
-					--else addNewKey pohelper.rotation.controller sliderTime
-					addNewKey pickedObject.position.controller sliderTime
-					maxOps.setKeyMode = false
+					--at time sliderTime
+					--(
+					--	pickedObject.transform= pohelper.transform
+						if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then addNewKey pickedObject.rotation.controller sliderTime
+						else addNewKey pickedObject.controller.roll_angle.controller sliderTime
+						--else addNewKey pickedObject.roll_angle.controller sliderTime
+						--else addNewKey pickedObject.transform.controller.roll_angle sliderTime
+						addNewKey pickedObject.position.controller sliderTime
+						addNewKey pickedObject.scale.controller sliderTime
+					--)
+					--maxOps.setKeyMode = false
 					if pickedObject.parent != undefined do
 					(
 						setUserProp pickedObject "AOHadParent" 1
@@ -1479,6 +1857,8 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					if ClassOf pickedObject == targetcamera or ClassOf pickedObject == VRayPhysicalCamera do
 					(
 						local crollanglehelper = point size:0.1
+						crollanglehelper.name = "AO_" + pickedObject.name + " roll angle temp helper"
+						AAHHelperLayer.addnode crollanglehelper
 						at time sliderTime
 						(
 							crollanglehelper.transform = pohelper.transform
@@ -1751,8 +2131,14 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 					local BakePointHelper = point size:0.1
 					BakePointHelper.scale.controller = ScaleXYZ()
+					BakePointHelper.name = "BakeObjectsTransform temp helper"
+					UpdateOrCreateAAHHelperLayer()
+					AAHHelperLayer.addnode BakePointHelper
 					local pgbCount = 0
 					local pgbCountTotal = selection.count
+					local isThereAZeroKeyAtAllpos = false
+					local isThereAZeroKeyAtAllrot = false
+					local isThereAZeroKeyAtAllscl = false
 					with Animate on
 					(
 						for s in selection do
@@ -1768,18 +2154,20 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 								(	
 									for i = 0 to BakeRangeKeysCount do
 									(
+										if (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value)) == 0.0f do isThereAZeroKeyAtAllpos = true
 										at time (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value))
 										(
-											BakePointHelper.position.x = s.position.x
-											BakePointHelper.position.y = s.position.y
-											BakePointHelper.position.z = s.position.z
+											in coordsys parent BakePointHelper.position.x = in coordsys parent s.position.x
+											in coordsys parent BakePointHelper.position.y = in coordsys parent s.position.y
+											in coordsys parent BakePointHelper.position.z = in coordsys parent s.position.z
 										)
 									)
+									if ACAnimRangeEndKeyframe == 0.0f do isThereAZeroKeyAtAllpos = true
 									at time ACAnimRangeEndKeyframe
 									(
-										BakePointHelper.position.x = s.position.x
-										BakePointHelper.position.y = s.position.y
-										BakePointHelper.position.z = s.position.z
+										in coordsys parent BakePointHelper.position.x = in coordsys parent s.position.x
+										in coordsys parent BakePointHelper.position.y = in coordsys parent s.position.y
+										in coordsys parent BakePointHelper.position.z = in coordsys parent s.position.z
 									)
 									if BakePointHelper.position.controller.keys.count > 0 do
 									(
@@ -1788,35 +2176,96 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 											deselectKeys s.position.controller
 											selectKeys s.position.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
 											deleteKeys s.position.controller #selection
+											if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+											(
+												deselectKeys BakePointHelper.position.controller
+												selectKeys BakePointHelper.position.controller 0.0f
+												deleteKeys BakePointHelper.position.controller #selection
+											)
+										)
+										isThereAZeroKeyAtAllpos = false
+										if s.position.controller.keys.count > 0 do 
+										(
+											for i = 1 to s.position.controller.keys.count do
+											(
+												if s.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+											)
 										)
 										for i = 1 to BakePointHelper.position.controller.keys.count do
 										(
 											at time BakePointHelper.position.controller.keys[i].time
 											(
-												s.position.x = BakePointHelper.position.x
-												s.position.y = BakePointHelper.position.y
-												s.position.z = BakePointHelper.position.z
+												in coordsys parent s.position.x = in coordsys parent BakePointHelper.position.x
+												in coordsys parent s.position.y = in coordsys parent BakePointHelper.position.y
+												in coordsys parent s.position.z = in coordsys parent BakePointHelper.position.z
 											)
 										)
+										if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+										(
+											deselectKeys s.position.controller
+											selectKeys s.position.controller 0.0f
+											deleteKeys s.position.controller #selection
+										)
 									)
+									deleteKeys BakePointHelper.position.controller
+									deleteKeys BakePointHelper.rotation.controller
+									deleteKeys BakePointHelper.scale.controller
 								)
 								
 								if chkbx_ACTrnsfrmKsRot.state == true do
 								(	
 									for i = 0 to BakeRangeKeysCount do
 									(
+										if (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value)) == 0.0f do isThereAZeroKeyAtAllrot = true
 										at time (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value))
 										(
-											BakePointHelper.rotation.x_rotation = s.rotation.x_rotation
-											BakePointHelper.rotation.y_rotation = s.rotation.y_rotation
-											BakePointHelper.rotation.z_rotation = s.rotation.z_rotation
+											--BakePointHelper.rotation.x_rotation = s.rotation.x_rotation
+											--BakePointHelper.rotation.y_rotation = s.rotation.y_rotation
+											--BakePointHelper.rotation.z_rotation = s.rotation.z_rotation
+											--BakePointHelper.rotation.w = s.rotation.w
+											--BakePointHelper.rotation.x = s.rotation.x
+											--BakePointHelper.rotation.y = s.rotation.y
+											--BakePointHelper.rotation.z = s.rotation.z
+											--in coordsys parent BakePointHelper.rotation.controller.value = in coordsys parent s.rotation.controller.value
+											--in coordsys parent BakePointHelper.rotation.x = in coordsys parent s.rotation.x
+											--in coordsys parent BakePointHelper.rotation.y = in coordsys parent s.rotation.y
+											--in coordsys parent BakePointHelper.rotation.z = in coordsys parent s.rotation.z
+											--in coordsys parent BakePointHelper.rotation.w = in coordsys parent s.rotation.w
+											
+											--in coordsys parent BakePointHelper.rotation.controller.value = (quat (in coordsys parent s.rotation.x) (in coordsys parent s.rotation.y) (in coordsys parent s.rotation.z) (in coordsys parent s.rotation.w)) --causes animation jerking!!!
+											
+											if s.parent != undefined then
+												in coordsys parent BakePointHelper.rotation.controller.value = (s.transform * (inverse s.parent.transform)) as quat
+											else
+												in coordsys parent BakePointHelper.rotation.controller.value = s.transform as quat
+											
+												--(objec1[i].transform as quat) 
+												--((objec1[i].transform * (inverse objec1[i].parent.transform)) as quat) 
+												
+												--in coordsys parent objNam.rotation.controller.value = (quat rx ry rz rw)
 										)
 									)
+									if ACAnimRangeEndKeyframe == 0.0f do isThereAZeroKeyAtAllrot = true
 									at time ACAnimRangeEndKeyframe
 									(
-										BakePointHelper.rotation.x_rotation = s.rotation.x_rotation
-										BakePointHelper.rotation.y_rotation = s.rotation.y_rotation
-										BakePointHelper.rotation.z_rotation = s.rotation.z_rotation
+										--BakePointHelper.rotation.x_rotation = s.rotation.x_rotation
+										--BakePointHelper.rotation.y_rotation = s.rotation.y_rotation
+										--BakePointHelper.rotation.z_rotation = s.rotation.z_rotation
+										--BakePointHelper.rotation.w = s.rotation.w
+										--BakePointHelper.rotation.x = s.rotation.x
+										--BakePointHelper.rotation.y = s.rotation.y
+										--BakePointHelper.rotation.z = s.rotation.z
+										--in coordsys parent BakePointHelper.rotation.controller.value = in coordsys parent s.rotation.controller.value
+										--in coordsys parent BakePointHelper.rotation.x = in coordsys parent s.rotation.x
+										--in coordsys parent BakePointHelper.rotation.y = in coordsys parent s.rotation.y
+										--in coordsys parent BakePointHelper.rotation.z = in coordsys parent s.rotation.z
+										--in coordsys parent BakePointHelper.rotation.w = in coordsys parent s.rotation.w
+										--in coordsys parent BakePointHelper.rotation.controller.value = (quat (in coordsys parent s.rotation.x) (in coordsys parent s.rotation.y) (in coordsys parent s.rotation.z) (in coordsys parent s.rotation.w)) --causes animation jerking!!!
+										
+										if s.parent != undefined then
+											in coordsys parent BakePointHelper.rotation.controller.value = (s.transform * (inverse s.parent.transform)) as quat
+										else
+											in coordsys parent BakePointHelper.rotation.controller.value = s.transform as quat
 									)
 									if BakePointHelper.rotation.controller.keys.count > 0 do
 									(
@@ -1825,17 +2274,55 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 											deselectKeys s.rotation.controller
 											selectKeys s.rotation.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
 											deleteKeys s.rotation.controller #selection
+											if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+											(
+												deselectKeys BakePointHelper.rotation.controller
+												selectKeys BakePointHelper.rotation.controller 0.0f
+												deleteKeys BakePointHelper.rotation.controller #selection
+											)
+										)
+										isThereAZeroKeyAtAllrot = false
+										if s.rotation.controller.keys.count > 0 do 
+										(
+											for i = 1 to s.rotation.controller.keys.count do
+											(
+												if s.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+											)
 										)
 										for i = 1 to BakePointHelper.rotation.controller.keys.count do
 										(
 											at time BakePointHelper.rotation.controller.keys[i].time
 											(
-												s.rotation.x_rotation = BakePointHelper.rotation.x_rotation
-												s.rotation.y_rotation = BakePointHelper.rotation.y_rotation
-												s.rotation.z_rotation = BakePointHelper.rotation.z_rotation
+												--s.rotation.x_rotation = BakePointHelper.rotation.x_rotation
+												--s.rotation.y_rotation = BakePointHelper.rotation.y_rotation
+												--s.rotation.z_rotation = BakePointHelper.rotation.z_rotation
+												--s.rotation.w = BakePointHelper.rotation.w
+												--s.rotation.x = BakePointHelper.rotation.x
+												--s.rotation.y = BakePointHelper.rotation.y
+												--s.rotation.z = BakePointHelper.rotation.z
+												--in coordsys parent s.rotation.controller.value = in coordsys parent BakePointHelper.rotation.controller.value
+												--in coordsys parent s.rotation.x = in coordsys parent BakePointHelper.rotation.x
+												--in coordsys parent s.rotation.y = in coordsys parent BakePointHelper.rotation.y
+												--in coordsys parent s.rotation.z = in coordsys parent BakePointHelper.rotation.z
+												--in coordsys parent s.rotation.w = in coordsys parent BakePointHelper.rotation.w
+												--in coordsys parent s.rotation.controller.value = (quat (in coordsys parent BakePointHelper.rotation.x) (in coordsys parent BakePointHelper.rotation.y) (in coordsys parent BakePointHelper.rotation.z) (in coordsys parent BakePointHelper.rotation.w)) --causes animation jerking!!!
+												
+												--if s.parent != undefined then
+												--	in coordsys parent s.rotation.controller.value = (BakePointHelper.transform * (inverse BakePointHelper.parent.transform)) as quat
+												--else
+													in coordsys parent s.rotation.controller.value = BakePointHelper.transform as quat
 											)
 										)
+										if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+										(
+											deselectKeys s.rotation.controller
+											selectKeys s.rotation.controller 0.0f
+											deleteKeys s.rotation.controller #selection
+										)
 									)
+									deleteKeys BakePointHelper.position.controller
+									deleteKeys BakePointHelper.rotation.controller
+									deleteKeys BakePointHelper.scale.controller
 								)
 								
 								if chkbx_ACTrnsfrmKsScale.state == true do
@@ -1843,18 +2330,20 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 									s.scale.controller = ScaleXYZ()
 									for i = 0 to BakeRangeKeysCount do
 									(
+										if (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value)) == 0.0f do isThereAZeroKeyAtAllscl = true
 										at time (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value))
 										(
-											BakePointHelper.scale.x = s.scale.x
-											BakePointHelper.scale.y = s.scale.y
-											BakePointHelper.scale.z = s.scale.z
+											in coordsys world BakePointHelper.scale.x = in coordsys world s.scale.x
+											in coordsys world BakePointHelper.scale.y = in coordsys world s.scale.y
+											in coordsys world BakePointHelper.scale.z = in coordsys world s.scale.z
 										)
 									)
+									if ACAnimRangeEndKeyframe == 0.0f do isThereAZeroKeyAtAllscl = true
 									at time ACAnimRangeEndKeyframe
 									(
-										BakePointHelper.scale.x = s.scale.x
-										BakePointHelper.scale.y = s.scale.y
-										BakePointHelper.scale.z = s.scale.z
+										in coordsys world BakePointHelper.scale.x = in coordsys world s.scale.x
+										in coordsys world BakePointHelper.scale.y = in coordsys world s.scale.y
+										in coordsys world BakePointHelper.scale.z = in coordsys world s.scale.z
 									)
 									if BakePointHelper.scale.controller.keys.count > 0 do
 									(
@@ -1863,15 +2352,35 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 											deselectKeys s.scale.controller
 											selectKeys s.scale.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
 											deleteKeys s.scale.controller #selection
+											if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+											(
+												deselectKeys BakePointHelper.scale.controller
+												selectKeys BakePointHelper.scale.controller 0.0f
+												deleteKeys BakePointHelper.scale.controller #selection
+											)
+										)
+										isThereAZeroKeyAtAllscl = false
+										if s.scale.controller.keys.count > 0 do 
+										(
+											for i = 1 to s.scale.controller.keys.count do
+											(
+												if s.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+											)
 										)
 										for i = 1 to BakePointHelper.scale.controller.keys.count do
 										(
 											at time BakePointHelper.scale.controller.keys[i].time
 											(
-												s.scale.x = BakePointHelper.scale.x
-												s.scale.y = BakePointHelper.scale.y
-												s.scale.z = BakePointHelper.scale.z
+												in coordsys world s.scale.x = in coordsys world BakePointHelper.scale.x
+												in coordsys world s.scale.y = in coordsys world BakePointHelper.scale.y
+												in coordsys world s.scale.z = in coordsys world BakePointHelper.scale.z
 											)
+										)
+										if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+										(
+											deselectKeys s.scale.controller
+											selectKeys s.scale.controller 0.0f
+											deleteKeys s.scale.controller #selection
 										)
 									)
 								)
@@ -2065,7 +2574,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 		button CreateHISolverEyes "Eyes" width:32 height:16 align:#left across:2 tooltip:"Creates HI Solver for selected eye pupils' bones.\nSelect ALL eye pupils' bones/helpers and push this button."
 		button DeleteHISolver "Delete for all selected" width:115 height:16 align:#right tooltip:"Deletes selected HI Solvers or HI Solvers for selected bones.\nWorks only for HI Solvers that were created by this script!\nSelect all needed bones or/and HI solvers and push this button."
 		button CreateKeysFAHIB "Bake for all selected" height:16 tooltip:"Creates anim keys for all selected bones that uses HI Solvers or for bones that uses selected HI Solvers.\nWorks only for HI Solvers that were created by this script!\nUse this before animation export.\nSelect all needed bones or/and HI solvers and push this button."
-		checkbox chkbx_DetailedHIAnim "Detailed" align:#left checked:true across:2 tooltip:"Bakes more detailed animation by adding extra anim keys every few frames. Choose frame interval in the \"Int\" field."
+		checkbox chkbx_DetailedHIAnim "Detailed" align:#left checked:true across:2 tooltip:"Bakes more detailed animation by adding extra anim keys every few frames. Choose frame interval in the \"Int\" field.\nDisable ONLY if you're know what you're doing and you want to get the less detailed baked anim depending on current HI controller's animation keys!"
 		spinner spn_DetailedHIAnim "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45
 	)
 	
@@ -3841,9 +4350,9 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 	on AboutButton pressed do
 	(
 		try (DestroyDialog AboutDialog) catch()
-		rollout AboutDialog "Another Animation Helper v.0.981b" width:275 height:315
+		rollout AboutDialog "Another Animation Helper v.0.982b" width:275 height:315
 		(
-			label abd1 "\"Another Animation Helper\" v.0.981b (Open Beta)" align:#left
+			label abd1 "\"Another Animation Helper\" v.0.982b (Open Beta)" align:#left
 			label abd2 ""
 			label abd3 "Made by Shagg_E, 2017-2022:" align:#left
 			HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
