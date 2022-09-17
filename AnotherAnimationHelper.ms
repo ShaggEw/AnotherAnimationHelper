@@ -6,10 +6,12 @@ global NewBH_Number = 1000
 global NewHI_Number = 0
 --global NewHIE_Number = 0
 global NewAO_Number = 0
+global NewAOParent_Number = 0
 global NewBiped_Number = 1000
 global NewSM_Number = 0
 global Rig_Tuner_Rollout
 global AAHHelperLayer
+global AAHControllerLayer
 callbacks.removeScripts id:#rigtuner
 callbacks.removeScripts id:#processinfo
 
@@ -33,6 +35,20 @@ fn UpdateOrCreateAAHHelperLayer =
 		AAHHelperLayer = LayerManager.newLayer()
 		AAHHelperLayer.setname "!AAH Temp Helpers Layer"
 		AAHHelperLayer.isHidden = true
+	)
+)
+
+fn UpdateOrCreateAAHControllerLayer =
+(
+	--local layerName = "AAH Temp Helpers Layer"
+	AAHControllerLayer = LayerManager.getLayerFromName "!AAH Controllers Layer"--layerName
+	--AAHControllerLayer.nodes &thenodes
+	--select thenodes
+	if AAHControllerLayer == undefined do
+	(
+		AAHControllerLayer = LayerManager.newLayer()
+		AAHControllerLayer.setname "!AAH Controllers Layer"
+		AAHControllerLayer.isHidden = false
 	)
 )
 
@@ -113,9 +129,9 @@ fn IncreaseAONumber =
 	local OldAO_Number = -1
 	for obj in objects do
 	(
-		if getUserProp obj "AOBoneNumber" != undefined then
+		if getUserProp obj "AOControllerNumber" != undefined then
 		(
-			OldAO_Number = getUserProp obj "AOBoneNumber"
+			OldAO_Number = getUserProp obj "AOControllerNumber"
 			if OldAO_Number > NewAO_Number then NewAO_Number = OldAO_Number
 			OldAO_Number = -1
 		)
@@ -125,8 +141,35 @@ fn IncreaseAONumber =
 			if OldAO_Number > NewAO_Number then NewAO_Number = OldAO_Number
 			OldAO_Number = -1
 		)
+		if getUserProp obj "AObjectNumber" != undefined then
+		(
+			OldAO_Number = getUserProp obj "AObjectNumber"
+			if OldAO_Number > NewAO_Number then NewAO_Number = OldAO_Number
+			OldAO_Number = -1
+		)
 	)
 	NewAO_Number = NewAO_Number + 1
+)
+
+fn IncreaseAOParentNumber =
+(	
+	local OldAOParent_Number = -1
+	for obj in objects do
+	(
+		if getUserProp obj "AOParentPNumber" != undefined then
+		(
+			OldAOParent_Number = getUserProp obj "AOParentPNumber"
+			if OldAOParent_Number > NewAOParent_Number then NewAOParent_Number = OldAOParent_Number
+			OldAOParent_Number = -1
+		)
+		if getUserProp obj "AOParentCNumber" != undefined then
+		(
+			OldAOParent_Number = getUserProp obj "AOParentCNumber"
+			if OldAOParent_Number > NewAOParent_Number then NewAOParent_Number = OldAOParent_Number
+			OldAOParent_Number = -1
+		)
+	)
+	NewAOParent_Number = NewAOParent_Number + 1
 )
 
 fn IncreaseBipedNumber =
@@ -835,20 +878,21 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		for s in selectionArr do
 		(
 			--if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do pgbCountTotal = pgbCountTotal + 1
-			if getUserProp s "AOBoneNumber" != undefined and getUserProp s "AOBoneNumber" != -1 do
+			if getUserProp s "AOControllerNumber" != undefined and getUserProp s "AOControllerNumber" != -1 do
 			(
-				local AOSelectNumber = getUserProp s "AOBoneNumber"
+				local AOSelectNumber = getUserProp s "AOControllerNumber"
 				for obj in objects do
 				(
 					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
 				)
-				for obj in helpers do
+				/*for obj in helpers do
 				(
 					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
-				)
+				)*/
 			)
 		)
 		UpdateOrCreateAAHHelperLayer()
+		UpdateOrCreateAAHControllerLayer()
 		local isThereAZeroKeyAtAllpos = false
 		local isThereAZeroKeyAtAllrot = false
 		local isThereAZeroKeyAtAllscl = false
@@ -866,16 +910,17 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					Process_Rollout.lbl_PrcssAAH.text = "Baking attach initialising"
 					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 					local AObject_Number = getUserProp s "AObjectNumber"
-					local AOBone
+					local AOController
 					local AObjecthelper
-					for AOBAll in objects do
+					for AOCAll in objects do
 					(
-						if getUserProp AOBAll "AOBoneNumber" == AObject_Number do AOBone = AOBAll
+						if getUserProp AOCAll "AOControllerNumber" == AObject_Number do AOController = AOCAll
+						if getUserProp AOCAll "AOHelperNumber" == AObject_Number do AObjecthelper = AOCAll
 					)
-					for AOHAll in helpers do --AAHHelperLayer.nodes do--helpers do
+					/*for AOHAll in helpers do --AAHHelperLayer.nodes do--helpers do
 					(
 						if getUserProp AOHAll "AOHelperNumber" == AObject_Number do AObjecthelper = AOHAll
-					)
+					)*/
 					if BakeAOAnimFlag == 1 and AObjecthelper != undefined do
 					(
 						--if s.position.controller.keys.count > 0 or s.rotation.controller.keys.count > 0 or s.scale.controller.keys.count > 0 do
@@ -1136,21 +1181,21 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 
 								--Start of current object animation baking depending on target transform (attach parent bone/object)
-								if AOBone != undefined and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
+								if AOController != undefined and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
 								(
 									if AOAnimRangeStart < AOAnimRangeEnd do
 									(
-										if AOBone.position.controller.keys.count > 0 do
+										if AOController.position.controller.keys.count > 0 do
 										(
 											local pgbCount = 0
-											local pgbCountTotal = AOBone.position.controller.keys.count
+											local pgbCountTotal = AOController.position.controller.keys.count
 											Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2: " + s.name
-											for i = 1 to AOBone.position.controller.keys.count do
+											for i = 1 to AOController.position.controller.keys.count do
 											(
-												if AOBone.position.controller.keys[i].time > AOAnimRangeStart and AOBone.position.controller.keys[i].time < AOAnimRangeEnd do
+												if AOController.position.controller.keys[i].time > AOAnimRangeStart and AOController.position.controller.keys[i].time < AOAnimRangeEnd do
 												(
-													if AOBone.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-													at time AOBone.position.controller.keys[i].time
+													if AOController.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+													at time AOController.position.controller.keys[i].time
 													(
 														in coordsys world AObjecthelper.transform = in coordsys world s.transform
 														pgbCount = pgbCount + 1
@@ -1162,19 +1207,19 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2 (Ok!): " + s.name
 										Process_Rollout.prgb_AAH.value = 0
 										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-										if ClassOf AOBone != targetcamera and ClassOf AOBone != VRayPhysicalCamera then
+										if ClassOf AOController != targetcamera and ClassOf AOController != VRayPhysicalCamera then
 										(
-											if AOBone.rotation.controller.keys.count > 0 do
+											if AOController.rotation.controller.keys.count > 0 do
 											(
 												local pgbCount = 0
-												local pgbCountTotal = AOBone.rotation.controller.keys.count
+												local pgbCountTotal = AOController.rotation.controller.keys.count
 												Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2: " + s.name
-												for i = 1 to AOBone.rotation.controller.keys.count do
+												for i = 1 to AOController.rotation.controller.keys.count do
 												(
-													if AOBone.rotation.controller.keys[i].time > AOAnimRangeStart and AOBone.rotation.controller.keys[i].time < AOAnimRangeEnd do
+													if AOController.rotation.controller.keys[i].time > AOAnimRangeStart and AOController.rotation.controller.keys[i].time < AOAnimRangeEnd do
 													(
-														if AOBone.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-														at time AOBone.rotation.controller.keys[i].time
+														if AOController.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+														at time AOController.rotation.controller.keys[i].time
 														(
 															in coordsys world AObjecthelper.transform = in coordsys world s.transform
 															pgbCount = pgbCount + 1
@@ -1189,17 +1234,17 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 										)
 										else
 										(
-											if AOBone.controller.roll_angle.controller.keys.count > 0 do
+											if AOController.controller.roll_angle.controller.keys.count > 0 do
 											(
 												local pgbCount = 0
-												local pgbCountTotal = AOBone.controller.roll_angle.controller.keys.count
+												local pgbCountTotal = AOController.controller.roll_angle.controller.keys.count
 												Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll2: " + s.name
-												for i = 1 to AOBone.controller.roll_angle.controller.keys.count do
+												for i = 1 to AOController.controller.roll_angle.controller.keys.count do
 												(
-													if AOBone.controller.roll_angle.controller.keys[i].time > AOAnimRangeStart and AOBone.controller.roll_angle.controller.keys[i].time < AOAnimRangeEnd do
+													if AOController.controller.roll_angle.controller.keys[i].time > AOAnimRangeStart and AOController.controller.roll_angle.controller.keys[i].time < AOAnimRangeEnd do
 													(
-														if AOBone.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-														at time AOBone.controller.roll_angle.controller.keys[i].time
+														if AOController.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+														at time AOController.controller.roll_angle.controller.keys[i].time
 														(
 															in coordsys world AObjecthelper.transform = in coordsys world s.transform
 															pgbCount = pgbCount + 1
@@ -1212,17 +1257,17 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 											Process_Rollout.prgb_AAH.value = 0
 											try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 										)
-										if AOBone.scale.controller.keys.count > 0 do
+										if AOController.scale.controller.keys.count > 0 do
 										(
 											local pgbCount = 0
-											local pgbCountTotal = AOBone.scale.controller.keys.count
+											local pgbCountTotal = AOController.scale.controller.keys.count
 											Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2: " + s.name
-											for i = 1 to AOBone.scale.controller.keys.count do
+											for i = 1 to AOController.scale.controller.keys.count do
 											(
-												if AOBone.scale.controller.keys[i].time > AOAnimRangeStart and AOBone.scale.controller.keys[i].time < AOAnimRangeEnd do
+												if AOController.scale.controller.keys[i].time > AOAnimRangeStart and AOController.scale.controller.keys[i].time < AOAnimRangeEnd do
 												(
-													if AOBone.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-													at time AOBone.scale.controller.keys[i].time
+													if AOController.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+													at time AOController.scale.controller.keys[i].time
 													(
 														in coordsys world AObjecthelper.transform = in coordsys world s.transform
 														pgbCount = pgbCount + 1
@@ -1292,32 +1337,34 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						)
 					)
 					setUserProp s "AObjectNumber" -1
-					if getUserProp s "AOHadParent" != undefined and getUserProp s "AOHadParent" == 1 then
+					if getUserProp s "AOParentCNumber" != undefined and getUserProp s "AOParentCNumber" > 0 then
 					(
+						local currentAOParentNumber = getUserProp s "AOParentCNumber"
 						local AOOriginalParent
 						for AOAllO in objects do
 						(
-							if getUserProp AOAllO "AOParentNumber" == AObject_Number do
+							if getUserProp AOAllO "AOParentPNumber" == currentAOParentNumber do
 							(
 								AOOriginalParent = AOAllO
-								setUserProp AOAllO "AOParentNumber" -1
+								--setUserProp AOAllO "AOParentPNumber" -1
 							)
 						)
-						for AOAllO in helpers do
+						/*for AOAllO in helpers do
 						(
 							if getUserProp AOAllO "AOParentNumber" == AObject_Number do
 							(
 								AOOriginalParent = AOAllO
 								setUserProp AOAllO "AOParentNumber" -1
 							)
-						)
+						)*/
 						if	AOOriginalParent != undefined then s.parent = AOOriginalParent
 						else s.parent = undefined
-						setUserProp s "AOHadParent" -1
+						setUserProp s "AOParentCNumber" -1
 					)
 					else s.parent = undefined
 					if AObjecthelper != undefined do setUserProp AObjecthelper "AOHelperNumber" -1
-					if AOBone != undefined do setUserProp AOBone "AOBoneNumber" -1
+					--if AOController != undefined do setUserProp AOController "AOControllerNumber" -1
+					if AOController != undefined do delete AOController
 					deleteKeys s.position.controller #allKeys
 					if ClassOf s != targetcamera and ClassOf s != VRayPhysicalCamera then deleteKeys s.rotation.controller #allKeys
 					else
@@ -1709,6 +1756,7 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 					local pohelper = point size:0.1
 					pohelper.name = "AO_" + pickedObject.name + " old anim"
 					UpdateOrCreateAAHHelperLayer()
+					UpdateOrCreateAAHControllerLayer()
 					AAHHelperLayer.addnode pohelper
 					local isThereAZeroKeyAtAllpos = false
 					local isThereAZeroKeyAtAllrot = false
@@ -1848,12 +1896,115 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						addNewKey pickedObject.scale.controller sliderTime
 					--)
 					--maxOps.setKeyMode = false
-					if pickedObject.parent != undefined do
+						
+						
+						
+						/*
+						fn IncreaseAOParentNumber =
+						(	
+							local OldAOParent_Number = -1
+							for obj in objects do
+							(
+								if getUserProp obj "AOParentPNumber" != undefined then
+								(
+									OldAOParent_Number = getUserProp obj "AOParentPNumber"
+									if OldAOParent_Number > NewAOParent_Number then NewAOParent_Number = OldAOParent_Number
+									OldAOParent_Number = -1
+								)
+								if getUserProp obj "AOParentCNumber" != undefined then
+								(
+									OldAOParent_Number = getUserProp obj "AOParentCNumber"
+									if OldAOParent_Number > NewAOParent_Number then NewAOParent_Number = OldAOParent_Number
+									OldAOParent_Number = -1
+								)
+							)
+							NewAOParent_Number = NewAOParent_Number + 1
+						)
+						
+						*/
+						
+						
+						
+						
+						
+					
+					if pickedObject.parent != undefined then
 					(
-						setUserProp pickedObject "AOHadParent" 1
-						setUserProp pickedObject.parent "AOParentNumber" NewAO_Number
+						--setUserProp pickedObject "AOHadParent" 1
+						local currentAOParent_Number
+						if getUserProp pickedObject.parent "AOParentPNumber" != undefined and getUserProp pickedObject.parent "AOParentPNumber" > 0 then
+						(
+							currentAOParent_Number = getUserProp pickedObject.parent "AOParentPNumber"
+						)
+						else
+						(
+							IncreaseAOParentNumber()
+							currentAOParent_Number = NewAOParent_Number
+							setUserProp pickedObject.parent "AOParentPNumber" currentAOParent_Number
+						)
+						setUserProp pickedObject "AOParentCNumber" currentAOParent_Number
+						--setUserProp pickedObject.parent "AOParentNumber" NewAO_Number
 					)
-					pickedObject.parent = s
+					else
+					(
+						setUserProp pickedObject "AOParentCNumber" -1						
+					)
+					
+					local newAOAttachHelper = point size:0.1
+					newAOAttachHelper.name = "AO_" + pickedObject.name + " attach controller"
+					newAOAttachHelper.cross = true
+					newAOAttachHelper.box = false
+					newAOAttachHelper.wirecolor = (color 255 106 0)
+					newAOAttachHelper.position.x = s.position.x
+					newAOAttachHelper.position.y = s.position.y
+					newAOAttachHelper.position.z = s.position.z
+					newAOAttachHelper.rotation.x_rotation = s.rotation.x_rotation
+					newAOAttachHelper.rotation.y_rotation = s.rotation.y_rotation
+					newAOAttachHelper.rotation.z_rotation = s.rotation.z_rotation
+					--s.scale.controller = ScaleXYZ()
+					--pickedObject.scale.controller = ScaleXYZ()
+					--pickedObject.scale.x = s.scale.x
+					--pickedObject.scale.y = s.scale.y
+					--pickedObject.scale.z = s.scale.z
+					newAOAttachHelper.position.controller = Position_Constraint()
+					newAOAttachHelper.position.controller.appendTarget s 50.0
+					newAOAttachHelper.rotation.controller = Orientation_Constraint()
+					newAOAttachHelper.rotation.controller.appendTarget s 50.0
+					addNewKey newAOAttachHelper.position.controller sliderTime
+					addNewKey newAOAttachHelper.rotation.controller sliderTime
+					addNewKey newAOAttachHelper.scale.controller sliderTime
+					--selectKeys newAOAttachHelper.rotation.controller
+					--deselectKeys newAOAttachHelper.rotation.controller sliderTime
+					--deleteKeys newAOAttachHelper.rotation.controller #selection
+					AAHControllerLayer.addnode newAOAttachHelper
+					freeze newAOAttachHelper
+					newAOAttachHelper.showFrozenInGray = false
+					--hide newAOAttachHelper
+					
+					
+					/*
+					local newhelper = point size:(length (p.position - s.position)) 
+					newhelper.size = (length (p.position - s.position))
+					newhelper.name = "HI_" + s.name
+					newhelper.position = s.position
+					newhelper.cross = false
+					newhelper.box = true
+					--newhelper.drawontop = true
+					newhelper.wirecolor = (color 255 0 0)
+					ikChain01.wirecolor = (color 255 0 0)
+					ikChain01.parent = newhelper
+					setUserProp newhelper "HISolverNumber" NewHI_Number
+					setUserProp newhelper "HISolverType" hitype
+					setUserProp ikChain01 "HISolverNumber" NewHI_Number
+					setUserProp ikChain01 "HISolverType" 3 -- "Chain" type
+					freeze ikChain01
+					ikChain01.showFrozenInGray = false
+					s.rotation.controller = Orientation_Constraint()
+					s.rotation.controller.appendTarget newhelper 50.0
+					*/
+					
+					
+					pickedObject.parent = newAOAttachHelper
 					if ClassOf pickedObject == targetcamera or ClassOf pickedObject == VRayPhysicalCamera do
 					(
 						local crollanglehelper = point size:0.1
@@ -1863,7 +2014,7 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						(
 							crollanglehelper.transform = pohelper.transform
 						)
-						crollanglehelper.parent = s
+						crollanglehelper.parent = newAOAttachHelper
 						pickedObject.controller.roll_angle.controller = Float_Script()
 						pickedObject.controller.roll_angle.controller.addNode "crah" (crollanglehelper)
 						--pickedObject.controller.roll_angle.controller.script = "-0.0175*(crah.transform.rotation as eulerangles).y"
@@ -1878,12 +2029,13 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 						setUserProp crollanglehelper "AOCHelperNumber" NewAO_Number
 						freeze crollanglehelper
 						hide crollanglehelper
+						AAHHelperLayer.addnode crollanglehelper
 					)
 					freeze pohelper
 					hide pohelper
-					setUserProp s "AOBoneNumber" NewAO_Number
+					setUserProp newAOAttachHelper "AOControllerNumber" NewAO_Number  -- setUserProp s "AOBoneNumber" NewAO_Number
 					setUserProp pickedObject "AObjectNumber" NewAO_Number
-					if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera do pickedObject.parent = s
+					if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera do pickedObject.parent = newAOAttachHelper
 					local info_str_msg = "Object \"" + pickedObject.name + "\" has been successfully attached to \"" + s.name + "\"."
 					messagebox info_str_msg title:"Done!"
 				)
@@ -4350,9 +4502,9 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 	on AboutButton pressed do
 	(
 		try (DestroyDialog AboutDialog) catch()
-		rollout AboutDialog "Another Animation Helper v.0.982b" width:275 height:315
+		rollout AboutDialog "Another Animation Helper v.0.983b" width:275 height:315
 		(
-			label abd1 "\"Another Animation Helper\" v.0.982b (Open Beta)" align:#left
+			label abd1 "\"Another Animation Helper\" v.0.983b (Open Beta)" align:#left
 			label abd2 ""
 			label abd3 "Made by Shagg_E, 2017-2022:" align:#left
 			HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
