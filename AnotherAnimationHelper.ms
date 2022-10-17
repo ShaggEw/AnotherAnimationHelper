@@ -1,4 +1,5 @@
 /**************************************************************************************************************************
+// Another Animation Helper v0.983b
 // This script was made by Shagg_E, 2017-2022
 **************************************************************************************************************************/
 
@@ -9,11 +10,12 @@ global NewAO_Number = 0
 global NewAOParent_Number = 0
 global NewBiped_Number = 1000
 global NewSM_Number = 0
-global Rig_Tuner_Rollout
 global AAHHelperLayer
 global AAHControllerLayer
-callbacks.removeScripts id:#rigtuner
-callbacks.removeScripts id:#processinfo
+global Rig_Tuner_Rollout
+callbacks.removeScripts id:#se_rigtuner
+global Process_Rollout
+callbacks.removeScripts id:#se_processinfo
 
 global ACAnimRangeStartKeyframe = undefined
 global ACAnimRangeEndKeyframe = undefined
@@ -551,13 +553,13 @@ rollout Process_Rollout "Process Info" width:132 height:30
 
 	on Process_Rollout open do
 	(
-		callbacks.addScript #selectionSetChanged "Process_Rollout.ProgressInfoStatusUpdate()" id:#processinfo
+		callbacks.addScript #selectionSetChanged "Process_Rollout.ProgressInfoStatusUpdate()" id:#se_processinfo
 		ProgressInfoStatusUpdate()
 	)
 
 	on Process_Rollout close do
 	(
-		callbacks.removeScripts id:#processinfo
+		callbacks.removeScripts id:#se_processinfo
 	)
 	
 ) --// end rollout
@@ -668,13 +670,13 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 
 	on Rig_Tuner_Rollout open do
 	(
-		callbacks.addScript #selectionSetChanged "Rig_Tuner_Rollout.SubIDsAndFrameNames()" id:#rigtuner
+		callbacks.addScript #selectionSetChanged "Rig_Tuner_Rollout.SubIDsAndFrameNames()" id:#se_rigtuner
 		SubIDsAndFrameNames()
 	)
 
 	on Rig_Tuner_Rollout close do
 	(
-		callbacks.removeScripts id:#rigtuner
+		callbacks.removeScripts id:#se_rigtuner
 	)
 
 	on btn_SubIDSet pressed do
@@ -4536,14 +4538,14 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 --// MACRO CALLS FOR UI
 /*********************************************************************************************************************************************************************/
 
-try (closeRolloutFloater AAHWindow) catch ()
-AAHWindow = NewRolloutFloater "AA Helper" 190 812 50 100
-addRollout Process_Rollout AAHWindow --rolledUp:true
-addRollout Rig_Tuner_Rollout AAHWindow rolledUp:true
-addRollout Main_Anim_Rollout AAHWindow --rolledUp:true
-addRollout Body_Anim_Rollout AAHWindow --rolledUp:true
---addRollout Face_Anim_Rollout AAHWindow rolledUp:true
---addRollout Hierarchies_Rollout AAHWindow rolledUp:true
-addRollout Info_Rollout AAHWindow rolledUp:true
+try (closeRolloutFloater SE_AAHWindow) catch ()
+SE_AAHWindow = NewRolloutFloater "AA Helper" 190 812 50 100
+addRollout Process_Rollout SE_AAHWindow --rolledUp:true
+addRollout Rig_Tuner_Rollout SE_AAHWindow rolledUp:true
+addRollout Main_Anim_Rollout SE_AAHWindow --rolledUp:true
+addRollout Body_Anim_Rollout SE_AAHWindow --rolledUp:true
+--addRollout Face_Anim_Rollout SE_AAHWindow rolledUp:true
+--addRollout Hierarchies_Rollout SE_AAHWindow rolledUp:true
+addRollout Info_Rollout SE_AAHWindow rolledUp:true
 
 /*********************************************************************************************************************************************************************/
