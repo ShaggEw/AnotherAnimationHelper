@@ -1,5 +1,5 @@
 /**************************************************************************************************************************
-// Another Animation Helper v0.983b
+// Another Animation Helper v0.984b
 // This script was made by Shagg_E, 2017-2022
 **************************************************************************************************************************/
 
@@ -12,10 +12,12 @@ global NewBiped_Number = 1000
 global NewSM_Number = 0
 global AAHHelperLayer
 global AAHControllerLayer
-global Rig_Tuner_Rollout
-callbacks.removeScripts id:#se_rigtuner
 global Process_Rollout
 callbacks.removeScripts id:#se_processinfo
+global Rig_Tuner_Rollout
+callbacks.removeScripts id:#se_rigtuner
+global Anim_Adapt_Rollout
+callbacks.removeScripts id:#se_aahaaupdate
 
 global ACAnimRangeStartKeyframe = undefined
 global ACAnimRangeEndKeyframe = undefined
@@ -250,13 +252,13 @@ fn AppendAllChildren obj aH = --&aH:#() =
 	)
 )
 
-fn GetAllHierarchy obj =
+fn GetAllHierarchy obj exceptRoot =
 (
 	local aH = #()
 	local rootObj = GetRoot obj
 	if rootObj != undefined do 
 	(
-		append aH rootObj
+		if exceptRoot == 0 do append aH rootObj
 		AppendAllChildren rootObj aH --:aH
 	)
 	return aH
@@ -397,19 +399,6 @@ fn GetCharacterHierarchy obj =
 	return cH
 )
 
-fn SelectAllHierarchy obj =
-(
-	local aH = #()
-	local rootObj = GetRoot obj
-	if rootObj != undefined do 
-	(
-		append aH rootObj
-		AppendAllChildren rootObj aH --:aH
-	)
-	clearselection()
-	select aH
-)
-
 fn HasSkinModifier obj =
 (
 	local skinModifierFound = false
@@ -426,13 +415,25 @@ fn HasSkinModifier obj =
 fn GetSkinMeshes selectedBones =
 (
 	local relatedSkins = #()
-	if getUserProp selectedBones[1] "SkinMeshNumber" != undefined then
+	local firstFoundBoneSkinId
+	if selectedBones.count == 1 then
+	(
+		if getUserProp selectedBones[1] "SkinMeshNumber" != undefined and getUserProp selectedBones[1] "SkinMeshNumber" != -1 do firstFoundBoneSkinId = getUserProp selectedBones[1] "SkinMeshNumber"
+	)
+	else
+	(
+		for sBFirstFound in selectedBones while firstFoundBoneSkinId == undefined do
+		(
+			if getUserProp sBFirstFound "SkinMeshNumber" != undefined and getUserProp sBFirstFound "SkinMeshNumber" != -1 do firstFoundBoneSkinId = getUserProp sBFirstFound "SkinMeshNumber"
+		)
+	)
+	if firstFoundBoneSkinId != undefined then
 	(
 		for obj in geometry do
 		(
 			if (HasSkinModifier obj) do
 			(
-				if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == getUserProp selectedBones[1] "SkinMeshNumber" do append relatedSkins obj
+				if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == firstFoundBoneSkinId do append relatedSkins obj
 			)
 		)
 	)
@@ -457,7 +458,7 @@ fn GetSkinMeshes selectedBones =
 							)
 						)
 					)
-				)	
+				)
 				else
 				(
 					local skTryCatchNumberOfBones
@@ -472,7 +473,6 @@ fn GetSkinMeshes selectedBones =
 							for i=1 to skTryCatchNumberOfBones while shitFound == false do 
 							(
 								sknname = skinops.getbonename sk i 0
-								
 								for k = 1 to sknodes.count while shitFound == false do
 								(
 									if shitFound == false and stricmp sknname sknodes[k].name == 0 do
@@ -512,6 +512,60 @@ fn GetSkinMeshes selectedBones =
 	return relatedSkins
 )
 
+fn MarkRelatedSkinBones selectedMesh =
+(
+	local shitFound = false
+	if getUserProp selectedMesh "SkinMeshNumber" == undefined or getUserProp selectedMesh "SkinMeshNumber" == -1 do
+	(
+		local s_Array = selection as array
+		local skTryCatchNumberOfBones
+		max modify mode
+		for sk in selectedMesh.modifiers where iskindof sk Skin while shitFound == false do
+		(
+			modpanel.setcurrentobject sk
+			local sknodes = for n in (refs.dependson sk) where isvalidnode n collect n
+			try (skTryCatchNumberOfBones = skinops.getnumberbones sk) catch () --some skinned meshes may cause bugs so that's why it's try-catch
+			if skTryCatchNumberOfBones != undefined do
+			(
+				for i=1 to skTryCatchNumberOfBones while shitFound == false do 
+				(
+					sknname = skinops.getbonename sk i 0
+					for k = 1 to sknodes.count while shitFound == false do
+					(
+						if shitFound == false and stricmp sknname sknodes[k].name == 0 do
+						(
+							for obj in objects while shitFound == false do
+							(
+								if shitFound == false and sknodes[k] == obj do
+								(
+									if getUserProp obj "SkinMeshNumber" == undefined then
+									(
+										IncreaseSkinMeshNumber()
+										setUserProp selectedMesh "SkinMeshNumber" NewSM_Number
+										local rsHierarchy = GetAllHierarchy obj 0
+										for rsBones in rsHierarchy do
+										(
+											setUserProp rsBones "SkinMeshNumber" NewSM_Number
+										)
+									)
+									else setUserProp selectedMesh "SkinMeshNumber" (getUserProp obj "SkinMeshNumber")
+									shitFound = true
+								)
+							)
+						)
+					)
+				)
+			)
+		)
+		clearselection()
+		for obj in s_Array do
+		(
+			selectmore obj
+		)
+	)
+	--return shitFound
+)
+
 fn RoundUp2 RValue RAccValue =
 (
 	return ((ceil (RValue / RAccValue)) * RAccValue)
@@ -535,15 +589,17 @@ rollout Process_Rollout "Process Info" width:132 height:30
 		if selection.count == 1 then
 		(
 			lbl_PrcssAAH.text = "Selected: " + $.name
+			--try (lbl_PrcssAAH.tooltip = "Selected: " + $.name) catch() -- It works! Will update the script later.
 		)
 		else if selection.count > 1 then
 		(
 			lbl_PrcssAAH.text = "Selected few objects"
+			--try (lbl_PrcssAAH.tooltip = "Current process info") catch()
 		)
 		else
 		(
 			lbl_PrcssAAH.text = "AAH is ready for use"
-			--prgb_AAH.value = 100.*i/aAFHGlobal.subanimsq
+			--try (lbl_PrcssAAH.tooltip = "Current process info") catch()
 		)
 	)
 	
@@ -617,7 +673,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 			local nrtbnParentChildCountS = (nrtbnParent.children.count + 1) as string
 			local nrtbnName = nrtbnParent.name + "Ch" + nrtbnParentChildCountS
 			nrtbn.name = nrtbnName
-			local nrtbnHier = GetAllHierarchy selection[1]
+			local nrtbnHier = GetAllHierarchy selection[1] 0
 			local nrtbnBoneID = nrtbnHier.count as string
 			clearselection()
 			setUserProp nrtbn "SubID" nrtbnBoneID
@@ -711,7 +767,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 			(
 				if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 				(
-					local sHier = GetAllHierarchy selection[1]
+					local sHier = GetAllHierarchy selection[1] 0
 					local newSubID = 0
 					for s in sHier do
 					(
@@ -736,7 +792,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		(
 			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 			(
-				local sHier = GetAllHierarchy selection[1]
+				local sHier = GetAllHierarchy selection[1] 0
 				/*for s in sHier do
 				(
 					setUserProp s "BoneIndex" "fuckyouasshole"
@@ -873,26 +929,242 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 	/*---------------------------------------------------------------------------------------------------*/
 	/*---------------------------------------------------------------------------------------------------*/
 	
-	fn RemoveAOLink BakeAOAnimFlag bool_DetailedAOAnim float_DetailedAOAnim =
+	fn CreateAOLink targetNode pickedObject bool_ShowResultDialogue =
 	(
 		local oldAnimKeysState = GetAndOffAnimKeys()
-		local selectionArr = selection as array
-		for s in selectionArr do
+		--select pickedObject
+		IncreaseAONumber()
+		local newAOAttachHelper
+		local pohelper = point size:0.1
+		pohelper.name = "AO_" + pickedObject.name + " old anim"
+		UpdateOrCreateAAHHelperLayer()
+		UpdateOrCreateAAHControllerLayer()
+		AAHHelperLayer.addnode pohelper
+		local isThereAZeroKeyAtAllpos = false
+		local isThereAZeroKeyAtAllrot = false
+		local isThereAZeroKeyAtAllscl = false
+		with Animate on
 		(
-			--if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do pgbCountTotal = pgbCountTotal + 1
-			if getUserProp s "AOControllerNumber" != undefined and getUserProp s "AOControllerNumber" != -1 do
+			if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then
 			(
-				local AOSelectNumber = getUserProp s "AOControllerNumber"
-				for obj in objects do
+				if pickedObject.rotation.controller.keys.count > 0 then
 				(
-					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
+					for i = 1 to pickedObject.rotation.controller.keys.count do
+					(
+						if pickedObject.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+						at time pickedObject.rotation.controller.keys[i].time
+						(
+							--pohelper.transform = pickedObject.transform
+							in coordsys world pohelper.rotation.controller.value = in coordsys world pickedObject.rotation.controller.value
+							
+							--if pickedObject.parent != undefined then
+							--	in coordsys parent pohelper.rotation.controller.value = (pickedObject.transform * (inverse pickedObject.parent.transform)) as quat
+							--else
+							--	in coordsys parent pohelper.rotation.controller.value = pickedObject.transform as quat
+							
+							--in coordsys world pohelper.rotation.controller.value = pickedObject.transform as quat
+						)
+					)
 				)
-				/*for obj in helpers do
+				else
 				(
-					if getUserProp obj "AObjectNumber" ==  AOSelectNumber do	selectmore obj
-				)*/
+					at time sliderTime
+					(
+						in coordsys world pohelper.transform = in coordsys world pickedObject.transform
+					)
+				)
+			)
+			else
+			(
+				if pickedObject.controller.roll_angle.controller.keys.count > 0 then
+				(
+					for i = 1 to pickedObject.controller.roll_angle.controller.keys.count do
+					(
+						if pickedObject.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+						at time pickedObject.controller.roll_angle.controller.keys[i].time
+						(
+							--pohelper.transform = pickedObject.transform
+							in coordsys world pohelper.transform = in coordsys world pickedObject.transform
+						)
+					)
+				)
+				else
+				(
+					at time sliderTime
+					(
+						--pohelper.transform = pickedObject.transform
+						in coordsys world pohelper.transform = in coordsys world pickedObject.transform
+					)
+				)
+			)
+			if pickedObject.position.controller.keys.count > 0 then
+			(
+				for i = 1 to pickedObject.position.controller.keys.count do
+				(
+					if pickedObject.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+					at time pickedObject.position.controller.keys[i].time
+					(
+						--pohelper.transform = pickedObject.transform
+						in coordsys world pohelper.position.x = in coordsys world pickedObject.position.x
+						in coordsys world pohelper.position.y = in coordsys world pickedObject.position.y
+						in coordsys world pohelper.position.z = in coordsys world pickedObject.position.z
+					)
+				)
+			)
+			else
+			(
+				at time sliderTime
+				(
+					--pohelper.transform = pickedObject.transform
+					in coordsys world pohelper.transform = in coordsys world pickedObject.transform
+				)
+			)
+			if pickedObject.scale.controller.keys.count > 0 then
+			(
+				for i = 1 to pickedObject.scale.controller.keys.count do
+				(
+					if pickedObject.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+					at time pickedObject.scale.controller.keys[i].time
+					(
+						--pohelper.transform = pickedObject.transform
+						in coordsys world pohelper.scale.x = in coordsys world pickedObject.scale.x
+						in coordsys world pohelper.scale.y = in coordsys world pickedObject.scale.y
+						in coordsys world pohelper.scale.z = in coordsys world pickedObject.scale.z
+					)
+				)
+			)
+			else
+			(
+				at time sliderTime
+				(
+					--pohelper.transform = pickedObject.transform
+					in coordsys world pohelper.transform = in coordsys world pickedObject.transform
+				)
 			)
 		)
+		if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+		(
+			deselectKeys pohelper.position.controller
+			selectKeys pohelper.position.controller 0.0f
+			deleteKeys pohelper.position.controller #selection
+		)
+		if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+		(
+			deselectKeys pohelper.rotation.controller
+			selectKeys pohelper.rotation.controller 0.0f
+			deleteKeys pohelper.rotation.controller #selection
+		)
+		if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+		(
+			deselectKeys pohelper.scale.controller
+			selectKeys pohelper.scale.controller 0.0f
+			deleteKeys pohelper.scale.controller #selection
+		)
+		setUserProp pohelper "AOHelperNumber" NewAO_Number
+		if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then deleteKeys pickedObject.rotation.controller #allKeys
+		else deleteKeys pickedObject.controller.roll_angle.controller #allKeys
+		deleteKeys pickedObject.position.controller #allKeys
+		deleteKeys pickedObject.scale.controller #allKeys
+		at time sliderTime pickedObject.transform= pohelper.transform
+		if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then addNewKey pickedObject.rotation.controller sliderTime
+		else addNewKey pickedObject.controller.roll_angle.controller sliderTime
+		addNewKey pickedObject.position.controller sliderTime
+		addNewKey pickedObject.scale.controller sliderTime
+		if pickedObject.parent != undefined then
+		(
+			local currentAOParent_Number
+			if getUserProp pickedObject.parent "AOParentPNumber" != undefined and getUserProp pickedObject.parent "AOParentPNumber" > 0 then
+			(
+				currentAOParent_Number = getUserProp pickedObject.parent "AOParentPNumber"
+			)
+			else
+			(
+				IncreaseAOParentNumber()
+				currentAOParent_Number = NewAOParent_Number
+				setUserProp pickedObject.parent "AOParentPNumber" currentAOParent_Number
+			)
+			setUserProp pickedObject "AOParentCNumber" currentAOParent_Number
+		)
+		else
+		(
+			setUserProp pickedObject "AOParentCNumber" -1						
+		)
+		
+		local newAOAttachHelperSize = 0.1
+		
+		if ClassOf pickedObject != point then
+		(
+			local newAOAttachHelperSizeBB= nodeLocalBoundingBox pickedObject
+			newAOAttachHelperSize = (length(newAOAttachHelperSizeBB[2] - newAOAttachHelperSizeBB[1]))*0.5
+		)
+		else newAOAttachHelperSize = pickedObject.size*0.5
+		if 0.1 > newAOAttachHelperSize do newAOAttachHelperSize = 0.1	
+		newAOAttachHelper = point size:newAOAttachHelperSize
+		newAOAttachHelper.name = "AO_" + pickedObject.name + " attach controller"
+		newAOAttachHelper.cross = true
+		newAOAttachHelper.box = true
+		newAOAttachHelper.drawontop = true
+		newAOAttachHelper.wirecolor = (color 255 106 0)
+		newAOAttachHelper.position.x = targetNode.position.x
+		newAOAttachHelper.position.y = targetNode.position.y
+		newAOAttachHelper.position.z = targetNode.position.z
+		if ClassOf targetNode != targetcamera and ClassOf targetNode != VRayPhysicalCamera then
+		(
+			newAOAttachHelper.rotation.x_rotation = targetNode.rotation.x_rotation
+			newAOAttachHelper.rotation.y_rotation = targetNode.rotation.y_rotation
+			newAOAttachHelper.rotation.z_rotation = targetNode.rotation.z_rotation
+		)
+		else newAOAttachHelper.transform = targetNode.transform
+		addNewKey newAOAttachHelper.position.controller sliderTime
+		addNewKey newAOAttachHelper.rotation.controller sliderTime
+		addNewKey newAOAttachHelper.scale.controller sliderTime
+		newAOAttachHelper.parent = targetNode
+		AAHControllerLayer.addnode newAOAttachHelper
+		pickedObject.parent = newAOAttachHelper
+		if ClassOf pickedObject == targetcamera or ClassOf pickedObject == VRayPhysicalCamera do
+		(
+			local crollanglehelper = point size:0.1
+			crollanglehelper.name = "AO_" + pickedObject.name + " roll angle temp helper"
+			AAHHelperLayer.addnode crollanglehelper
+			at time sliderTime
+			(
+				crollanglehelper.transform = pohelper.transform
+			)
+			crollanglehelper.parent = newAOAttachHelper
+			pickedObject.controller.roll_angle.controller = Float_Script()
+			pickedObject.controller.roll_angle.controller.addNode "crah" (crollanglehelper)
+			--pickedObject.controller.roll_angle.controller.script = "-0.0175*(crah.transform.rotation as eulerangles).y"
+			--pickedObject.controller.roll_angle.controller.script = "0.0175*atan2(crah.transform.row1.z)(crah.transform.row3.z)"
+			--pickedObject.controller.roll_angle.controller.script = "-0.0175*crah.rotation.y_rotation"
+			--pickedObject.controller.roll_angle.controller.script = "-0.0175*(atan2(crah.transform.row3.y)(crah.transform.row3.z)+atan2(crah.transform.row3.x)(crah.transform.row3.z))"
+			--pickedObject.controller.roll_angle.controller.script = "-0.0175*crah.rotation.y_rotation"
+			pickedObject.controller.roll_angle.controller.script = "if crah.transform.row2.z < 0.0 then
+roll_angle = 3.1416+0.0175*(crah.transform.rotation as eulerangles).y
+else
+roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((ftest.transform.rotation as eulerangles).x+ftest.rotation.x_rotation)"
+			setUserProp crollanglehelper "AOCHelperNumber" NewAO_Number
+			freeze crollanglehelper
+			hide crollanglehelper
+			AAHHelperLayer.addnode crollanglehelper
+		)
+		freeze pohelper
+		hide pohelper
+		setUserProp newAOAttachHelper "AOControllerNumber" NewAO_Number  -- setUserProp targetNode "AOBoneNumber" NewAO_Number
+		setUserProp pickedObject "AObjectNumber" NewAO_Number
+		if bool_ShowResultDialogue == 1 do
+		(
+			local info_str_msg = "Object \"" + pickedObject.name + "\" has been successfully attached to \"" + targetNode.name + "\"."
+			messagebox info_str_msg title:"Done!"
+		)
+		SetBackAnimKeys oldAnimKeysState
+		return newAOAttachHelper
+	)
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	
+	fn RemoveAOLink bkAOArray BakeAOAnimFlag bool_DetailedAOAnim float_DetailedAOAnim bool_ShowResultDialogue =
+	(
+		local oldAnimKeysState = GetAndOffAnimKeys()
 		UpdateOrCreateAAHHelperLayer()
 		UpdateOrCreateAAHControllerLayer()
 		local isThereAZeroKeyAtAllpos = false
@@ -900,18 +1172,17 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		local isThereAZeroKeyAtAllscl = false
 		--AAHHelperLayer 
 		--AAHHelperLayer.nodes &thenodes
-		--select thenodes
-		selectionArr = selection as array
-		for s in selectionArr do
+		local localbkAOArray = bkAOArray -- to prevent EXCEPTION ACCESS VIOLATION  memory error while deleting array's nodes, we need to create a local array which will be a copy of initial array
+		for bkAOATargetObject in localbkAOArray do
 		(
-			if isValidNode s do
+			if isValidNode bkAOATargetObject do
 			(
-				if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do
+				if getUserProp bkAOATargetObject "AObjectNumber" != undefined and getUserProp bkAOATargetObject "AObjectNumber" != -1 do
 				(
 					local wholeAttachBakingTime = timeStamp()
 					Process_Rollout.lbl_PrcssAAH.text = "Baking attach initialising"
 					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					local AObject_Number = getUserProp s "AObjectNumber"
+					local AObject_Number = getUserProp bkAOATargetObject "AObjectNumber"
 					local AOController
 					local AObjecthelper
 					for AOCAll in objects do
@@ -919,476 +1190,397 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 						if getUserProp AOCAll "AOControllerNumber" == AObject_Number do AOController = AOCAll
 						if getUserProp AOCAll "AOHelperNumber" == AObject_Number do AObjecthelper = AOCAll
 					)
-					/*for AOHAll in helpers do --AAHHelperLayer.nodes do--helpers do
-					(
-						if getUserProp AOHAll "AOHelperNumber" == AObject_Number do AObjecthelper = AOHAll
-					)*/
 					if BakeAOAnimFlag == 1 and AObjecthelper != undefined do
 					(
-						--if s.position.controller.keys.count > 0 or s.rotation.controller.keys.count > 0 or s.scale.controller.keys.count > 0 do
-						if AObjecthelper != undefined do--temp stupid condition, duplicate of the above one, delete later
+						local AOAnimRangeStart
+						local AOAnimRangeEnd
+						if bkAOATargetObject.position.controller.keys.count > 0 do
 						(
-							if s.position.controller.keys.count > 0 do
+							AOAnimRangeStart = bkAOATargetObject.position.controller.keys[1].time
+							if bkAOATargetObject.position.controller.keys.count > 1 do AOAnimRangeEnd = bkAOATargetObject.position.controller.keys[bkAOATargetObject.position.controller.keys.count].time
+						)
+						if AOController.position.controller.keys.count > 0 do
+						(
+							if AOAnimRangeStart != undefined then
 							(
-								deselectKeys AObjecthelper.position.controller
-								selectKeys AObjecthelper.position.controller s.position.controller.keys[1].time s.position.controller.keys[s.position.controller.keys.count].time
-								deleteKeys AObjecthelper.position.controller #selection
-								deselectKeys AObjecthelper.rotation.controller
-								selectKeys AObjecthelper.rotation.controller s.position.controller.keys[1].time s.position.controller.keys[s.position.controller.keys.count].time
-								deleteKeys AObjecthelper.rotation.controller #selection
-								deselectKeys AObjecthelper.scale.controller
-								selectKeys AObjecthelper.scale.controller s.position.controller.keys[1].time s.position.controller.keys[s.position.controller.keys.count].time
-								deleteKeys AObjecthelper.scale.controller #selection
+								if AOAnimRangeStart > AOController.position.controller.keys[1].time do AOAnimRangeStart = AOController.position.controller.keys[1].time
 							)
-							if ClassOf s != targetcamera and ClassOf s != VRayPhysicalCamera then
+							else AOAnimRangeStart = AOController.position.controller.keys[1].time
+							if AOController.position.controller.keys.count > 1 do
 							(
-								if s.rotation.controller.keys.count > 0 do
+								if AOAnimRangeEnd != undefined then
 								(
-									deselectKeys AObjecthelper.position.controller
-									selectKeys AObjecthelper.position.controller s.rotation.controller.keys[1].time s.rotation.controller.keys[s.rotation.controller.keys.count].time
-									deleteKeys AObjecthelper.position.controller #selection
-									deselectKeys AObjecthelper.rotation.controller
-									selectKeys AObjecthelper.rotation.controller s.rotation.controller.keys[1].time s.rotation.controller.keys[s.rotation.controller.keys.count].time
-									deleteKeys AObjecthelper.rotation.controller #selection
-									deselectKeys AObjecthelper.scale.controller
-									selectKeys AObjecthelper.scale.controller s.rotation.controller.keys[1].time s.rotation.controller.keys[s.rotation.controller.keys.count].time
-									deleteKeys AObjecthelper.scale.controller #selection
+									if AOAnimRangeEnd < AOController.position.controller.keys[AOController.position.controller.keys.count].time do AOAnimRangeEnd = AOController.position.controller.keys[AOController.position.controller.keys.count].time
 								)
+								else AOAnimRangeEnd = AOController.position.controller.keys[AOController.position.controller.keys.count].time
+							)
+						)
+						if ClassOf bkAOATargetObject != targetcamera and ClassOf bkAOATargetObject != VRayPhysicalCamera then
+						(
+							if bkAOATargetObject.rotation.controller.keys.count > 0 do
+							(
+								if AOAnimRangeStart != undefined then
+								(
+									if AOAnimRangeStart > bkAOATargetObject.rotation.controller.keys[1].time do AOAnimRangeStart = bkAOATargetObject.rotation.controller.keys[1].time
+								)
+								else AOAnimRangeStart = bkAOATargetObject.rotation.controller.keys[1].time
+								if bkAOATargetObject.rotation.controller.keys.count > 1 do
+								(
+									if AOAnimRangeEnd != undefined then
+									(
+										if AOAnimRangeEnd < bkAOATargetObject.rotation.controller.keys[bkAOATargetObject.rotation.controller.keys.count].time do AOAnimRangeEnd = bkAOATargetObject.rotation.controller.keys[bkAOATargetObject.rotation.controller.keys.count].time
+									)
+									else AOAnimRangeEnd = bkAOATargetObject.rotation.controller.keys[bkAOATargetObject.rotation.controller.keys.count].time
+								)
+							)
+						)
+						else
+						(
+							if bkAOATargetObject.controller.roll_angle.controller.keys.count > 0 do
+							(
+								if AOAnimRangeStart != undefined then
+								(
+									if AOAnimRangeStart > bkAOATargetObject.controller.roll_angle.controller.keys[1].time do AOAnimRangeStart = bkAOATargetObject.controller.roll_angle.controller.keys[1].time
+								)
+								else AOAnimRangeStart = bkAOATargetObject.controller.roll_angle.controller.keys[1].time
+								if bkAOATargetObject.controller.roll_angle.controller.keys.count > 1 do
+								(
+									if AOAnimRangeEnd != undefined then
+									(
+										if AOAnimRangeEnd < bkAOATargetObject.controller.roll_angle.controller.keys[bkAOATargetObject.controller.roll_angle.controller.keys.count].time do AOAnimRangeEnd = bkAOATargetObject.controller.roll_angle.controller.keys[bkAOATargetObject.controller.roll_angle.controller.keys.count].time
+									)
+									else AOAnimRangeEnd = bkAOATargetObject.controller.roll_angle.controller.keys[bkAOATargetObject.controller.roll_angle.controller.keys.count].time
+								)
+							)
+						)
+						if AOController.rotation.controller.keys.count > 0 do
+						(
+							if AOAnimRangeStart != undefined then
+							(
+								if AOAnimRangeStart > AOController.rotation.controller.keys[1].time do AOAnimRangeStart = AOController.rotation.controller.keys[1].time
+							)
+							else AOAnimRangeStart = AOController.rotation.controller.keys[1].time
+							if AOController.rotation.controller.keys.count > 1 do
+							(
+								if AOAnimRangeEnd != undefined then
+								(
+									if AOAnimRangeEnd < AOController.rotation.controller.keys[AOController.rotation.controller.keys.count].time do AOAnimRangeEnd = AOController.rotation.controller.keys[AOController.rotation.controller.keys.count].time
+								)
+								else AOAnimRangeEnd = AOController.rotation.controller.keys[AOController.rotation.controller.keys.count].time
+							)
+						)
+						if bkAOATargetObject.scale.controller.keys.count > 0 do
+						(
+							if AOAnimRangeStart != undefined then
+							(
+								if AOAnimRangeStart > bkAOATargetObject.scale.controller.keys[1].time do AOAnimRangeStart = bkAOATargetObject.scale.controller.keys[1].time
+							)
+							else AOAnimRangeStart = bkAOATargetObject.scale.controller.keys[1].time
+							if bkAOATargetObject.scale.controller.keys.count > 1 do
+							(
+								if AOAnimRangeEnd != undefined then
+								(
+									if AOAnimRangeEnd < bkAOATargetObject.scale.controller.keys[bkAOATargetObject.scale.controller.keys.count].time do AOAnimRangeEnd = bkAOATargetObject.scale.controller.keys[bkAOATargetObject.scale.controller.keys.count].time
+								)
+								else AOAnimRangeEnd = bkAOATargetObject.scale.controller.keys[bkAOATargetObject.scale.controller.keys.count].time
+							)
+						)
+						if AOController.scale.controller.keys.count > 0 do
+						(
+							if AOAnimRangeStart != undefined then
+							(
+								if AOAnimRangeStart > AOController.scale.controller.keys[1].time do AOAnimRangeStart = AOController.scale.controller.keys[1].time
+							)
+							else AOAnimRangeStart = AOController.scale.controller.keys[1].time
+							if AOController.scale.controller.keys.count > 1 do
+							(
+								if AOAnimRangeEnd != undefined then
+								(
+									if AOAnimRangeEnd < AOController.scale.controller.keys[AOController.scale.controller.keys.count].time do AOAnimRangeEnd = AOController.scale.controller.keys[AOController.scale.controller.keys.count].time
+								)
+								else AOAnimRangeEnd = AOController.scale.controller.keys[AOController.scale.controller.keys.count].time
+							)
+						)
+						if AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
+						(
+							deselectKeys AObjecthelper.position.controller
+							selectKeys AObjecthelper.position.controller AOAnimRangeStart AOAnimRangeEnd
+							deleteKeys AObjecthelper.position.controller #selection
+							deselectKeys AObjecthelper.rotation.controller
+							selectKeys AObjecthelper.rotation.controller AOAnimRangeStart AOAnimRangeEnd
+							deleteKeys AObjecthelper.rotation.controller #selection
+							deselectKeys AObjecthelper.scale.controller
+							selectKeys AObjecthelper.scale.controller AOAnimRangeStart AOAnimRangeEnd
+							deleteKeys AObjecthelper.scale.controller #selection
+						)
+						if AObjecthelper.position.controller.keys.count > 0 do 
+						(
+							for i = 1 to AObjecthelper.position.controller.keys.count do
+							(
+								if AObjecthelper.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+							)
+						)
+						
+						if AObjecthelper.rotation.controller.keys.count > 0 do 
+						(
+							for i = 1 to AObjecthelper.rotation.controller.keys.count do
+							(
+								if AObjecthelper.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+							)
+						)
+						
+						if AObjecthelper.scale.controller.keys.count > 0 do 
+						(
+							for i = 1 to AObjecthelper.scale.controller.keys.count do
+							(
+								if AObjecthelper.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+							)
+						)
+						
+						with Animate on
+						(
+							--Start of current object animation baking
+							if bkAOATargetObject.position.controller.keys.count > 0 do 
+							(
+								local pgbCount = 0
+								local pgbCountTotal = bkAOATargetObject.position.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos: " + bkAOATargetObject.name
+								for i = 1 to bkAOATargetObject.position.controller.keys.count do
+								(
+									if bkAOATargetObject.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+									at time bkAOATargetObject.position.controller.keys[i].time
+									(
+										--AObjecthelper.transform = bkAOATargetObject.transform
+										in coordsys world AObjecthelper.position.x = in coordsys world bkAOATargetObject.position.x
+										in coordsys world AObjecthelper.position.y = in coordsys world bkAOATargetObject.position.y
+										in coordsys world AObjecthelper.position.z = in coordsys world bkAOATargetObject.position.z
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									)
+								)
+							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos (Ok!): " + bkAOATargetObject.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							if ClassOf bkAOATargetObject != targetcamera and ClassOf bkAOATargetObject != VRayPhysicalCamera then
+							(
+								if bkAOATargetObject.rotation.controller.keys.count > 0 do
+								(
+									local pgbCount = 0
+									local pgbCountTotal = bkAOATargetObject.rotation.controller.keys.count
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot: " + bkAOATargetObject.name
+									for i = 1 to bkAOATargetObject.rotation.controller.keys.count do
+									(
+										if bkAOATargetObject.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										at time bkAOATargetObject.rotation.controller.keys[i].time
+										(
+											--AObjecthelper.transform = bkAOATargetObject.transform
+											in coordsys world AObjecthelper.rotation.controller.value = in coordsys world bkAOATargetObject.rotation.controller.value
+											--in coordsys world AObjecthelper.rotation.controller.value = bkAOATargetObject.transform as quat
+											--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world bkAOATargetObject.transform as quat
+											pgbCount = pgbCount + 1
+											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+										)
+									)
+								)
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot (Ok!): " + bkAOATargetObject.name
+								Process_Rollout.prgb_AAH.value = 0
+								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							)
 							else
 							(
-								if s.controller.roll_angle.controller.keys.count > 0 do
-								(
-									deselectKeys AObjecthelper.position.controller
-									selectKeys AObjecthelper.position.controller s.controller.roll_angle.controller.keys[1].time s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
-									deleteKeys AObjecthelper.position.controller #selection
-									deselectKeys AObjecthelper.rotation.controller
-									selectKeys AObjecthelper.rotation.controller s.controller.roll_angle.controller.keys[1].time s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
-									deleteKeys AObjecthelper.rotation.controller #selection
-									deselectKeys AObjecthelper.scale.controller
-									selectKeys AObjecthelper.scale.controller s.controller.roll_angle.controller.keys[1].time s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
-									deleteKeys AObjecthelper.scale.controller #selection
-								)
-								/*if s.controller.roll_angle.keys.count > 0 do
-								(
-									deselectKeys AObjecthelper.position.controller
-									selectKeys AObjecthelper.position.controller s.controller.roll_angle.keys[1].time s.controller.roll_angle.keys[s.controller.roll_angle.keys.count].time
-									deleteKeys AObjecthelper.position.controller #selection
-									deselectKeys AObjecthelper.rotation.controller
-									selectKeys AObjecthelper.rotation.controller s.controller.roll_angle.keys[1].time s.controller.roll_angle.keys[s.controller.roll_angle.keys.count].time
-									deleteKeys AObjecthelper.rotation.controller #selection
-								)*/
-							)
-							if s.scale.controller.keys.count > 0 do
-							(
-								deselectKeys AObjecthelper.position.controller
-								selectKeys AObjecthelper.position.controller s.scale.controller.keys[1].time s.scale.controller.keys[s.scale.controller.keys.count].time
-								deleteKeys AObjecthelper.position.controller #selection
-								deselectKeys AObjecthelper.rotation.controller
-								selectKeys AObjecthelper.rotation.controller s.scale.controller.keys[1].time s.scale.controller.keys[s.scale.controller.keys.count].time
-								deleteKeys AObjecthelper.rotation.controller #selection
-								deselectKeys AObjecthelper.scale.controller
-								selectKeys AObjecthelper.scale.controller s.scale.controller.keys[1].time s.scale.controller.keys[s.scale.controller.keys.count].time
-								deleteKeys AObjecthelper.scale.controller #selection
-							)
-							
-							if AObjecthelper.position.controller.keys.count > 0 do 
-							(
-								for i = 1 to AObjecthelper.position.controller.keys.count do
-								(
-									if AObjecthelper.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-								)
-							)
-							
-							if AObjecthelper.rotation.controller.keys.count > 0 do 
-							(
-								for i = 1 to AObjecthelper.rotation.controller.keys.count do
-								(
-									if AObjecthelper.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-								)
-							)
-							
-							if AObjecthelper.scale.controller.keys.count > 0 do 
-							(
-								for i = 1 to AObjecthelper.scale.controller.keys.count do
-								(
-									if AObjecthelper.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-								)
-							)
-							
-							with Animate on
-							(
-								local AOAnimRangeStart
-								local AOAnimRangeEnd
-								
-								--Start of current object animation baking
-								if s.position.controller.keys.count > 0 do 
+								if bkAOATargetObject.controller.roll_angle.controller.keys.count > 0 do
 								(
 									local pgbCount = 0
-									local pgbCountTotal = s.position.controller.keys.count
-									Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos: " + s.name
-									AOAnimRangeStart = s.position.controller.keys[1].time
-									if s.position.controller.keys.count > 1 do AOAnimRangeEnd = s.position.controller.keys[s.position.controller.keys.count].time
-									for i = 1 to s.position.controller.keys.count do
+									local pgbCountTotal = bkAOATargetObject.controller.roll_angle.controller.keys.count
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll: " + bkAOATargetObject.name
+									for i = 1 to bkAOATargetObject.controller.roll_angle.controller.keys.count do
 									(
-										if s.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-										at time s.position.controller.keys[i].time
+										if bkAOATargetObject.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										at time bkAOATargetObject.controller.roll_angle.controller.keys[i].time
 										(
-											--AObjecthelper.transform = s.transform
-											in coordsys world AObjecthelper.position.x = in coordsys world s.position.x
-											in coordsys world AObjecthelper.position.y = in coordsys world s.position.y
-											in coordsys world AObjecthelper.position.z = in coordsys world s.position.z
+											--AObjecthelper.transform = bkAOATargetObject.transform
+											--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world bkAOATargetObject.rotation.controller.value
+											in coordsys world AObjecthelper.transform = in coordsys world bkAOATargetObject.transform
 											pgbCount = pgbCount + 1
 											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 										)
 									)
 								)
-								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos (Ok!): " + s.name
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll (Ok!): " + bkAOATargetObject.name
 								Process_Rollout.prgb_AAH.value = 0
 								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-								if ClassOf s != targetcamera and ClassOf s != VRayPhysicalCamera then
+							)
+							if bkAOATargetObject.scale.controller.keys.count > 0 do
+							(
+								local pgbCount = 0
+								local pgbCountTotal = bkAOATargetObject.scale.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl: " + bkAOATargetObject.name
+								for i = 1 to bkAOATargetObject.scale.controller.keys.count do
 								(
-									if s.rotation.controller.keys.count > 0 do
+									if bkAOATargetObject.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+									at time bkAOATargetObject.scale.controller.keys[i].time
 									(
-										local pgbCount = 0
-										local pgbCountTotal = s.rotation.controller.keys.count
-										Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot: " + s.name
-										if AOAnimRangeStart != undefined then
-										(
-											if AOAnimRangeStart > s.rotation.controller.keys[1].time do AOAnimRangeStart = s.rotation.controller.keys[1].time
-										)
-										else AOAnimRangeStart = s.rotation.controller.keys[1].time
-										if s.rotation.controller.keys.count > 1 do
-										(
-											if AOAnimRangeEnd != undefined then
-											(
-												if AOAnimRangeEnd < s.rotation.controller.keys[s.rotation.controller.keys.count].time do AOAnimRangeEnd = s.rotation.controller.keys[s.rotation.controller.keys.count].time
-											)
-											else AOAnimRangeEnd = s.rotation.controller.keys[s.rotation.controller.keys.count].time
-										)
-										for i = 1 to s.rotation.controller.keys.count do
-										(
-											if s.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-											at time s.rotation.controller.keys[i].time
-											(
-												--AObjecthelper.transform = s.transform
-												--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world s.rotation.controller.value
-												in coordsys world AObjecthelper.rotation.controller.value = s.transform as quat
-												pgbCount = pgbCount + 1
-												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-											)
-										)
-									)
-									Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot (Ok!): " + s.name
-									Process_Rollout.prgb_AAH.value = 0
-									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-								)
-								else
-								(
-									if s.controller.roll_angle.controller.keys.count > 0 do
-									(
-										local pgbCount = 0
-										local pgbCountTotal = s.controller.roll_angle.controller.keys.count
-										Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll: " + s.name
-										if AOAnimRangeStart != undefined then
-										(
-											if AOAnimRangeStart > s.controller.roll_angle.controller.keys[1].time do AOAnimRangeStart = s.controller.roll_angle.controller.keys[1].time
-										)
-										else AOAnimRangeStart = s.controller.roll_angle.controller.keys[1].time
-										if s.controller.roll_angle.controller.keys.count > 1 do
-										(
-											if AOAnimRangeEnd != undefined then
-											(
-												if AOAnimRangeEnd < s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time do AOAnimRangeEnd = s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
-											)
-											else AOAnimRangeEnd = s.controller.roll_angle.controller.keys[s.controller.roll_angle.controller.keys.count].time
-										)
-										for i = 1 to s.controller.roll_angle.controller.keys.count do
-										(
-											if s.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-											at time s.controller.roll_angle.controller.keys[i].time
-											(
-												--AObjecthelper.transform = s.transform
-												--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world s.rotation.controller.value
-												in coordsys world AObjecthelper.transform = in coordsys world s.transform
-												pgbCount = pgbCount + 1
-												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-											)
-										)
-									)
-									Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll (Ok!): " + s.name
-									Process_Rollout.prgb_AAH.value = 0
-									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-									
-									/*if s.controller.roll_angle.keys.count > 0 do
-									(
-										if AOAnimRangeStart != undefined then
-										(
-											if AOAnimRangeStart > s.controller.roll_angle.keys[1].time do AOAnimRangeStart = s.controller.roll_angle.keys[1].time
-										)
-										else AOAnimRangeStart = s.controller.roll_angle.keys[1].time
-										if s.controller.roll_angle.keys.count > 1 do
-										(
-											if AOAnimRangeEnd != undefined then
-											(
-												if AOAnimRangeEnd < s.controller.roll_angle.keys[s.controller.roll_angle.keys.count].time do AOAnimRangeEnd = s.controller.roll_angle.keys[s.controller.roll_angle.keys.count].time
-											)
-											else AOAnimRangeEnd = s.controller.roll_angle.keys[s.controller.roll_angle.keys.count].time
-										)
-										for i = 1 to s.controller.roll_angle.keys.count do
-										(
-											at time s.controller.roll_angle.keys[i].time
-											(
-												AObjecthelper.transform = s.transform
-											)
-										)
-									)*/
-								)
-								
-								if s.scale.controller.keys.count > 0 do
-								(
-									local pgbCount = 0
-									local pgbCountTotal = s.scale.controller.keys.count
-									Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl: " + s.name
-									if AOAnimRangeStart != undefined then
-									(
-										if AOAnimRangeStart > s.scale.controller.keys[1].time do AOAnimRangeStart = s.scale.controller.keys[1].time
-									)
-									else AOAnimRangeStart = s.scale.controller.keys[1].time
-									if s.scale.controller.keys.count > 1 do
-									(
-										if AOAnimRangeEnd != undefined then
-										(
-											if AOAnimRangeEnd < s.scale.controller.keys[s.scale.controller.keys.count].time do AOAnimRangeEnd = s.scale.controller.keys[s.scale.controller.keys.count].time
-										)
-										else AOAnimRangeEnd = s.scale.controller.keys[s.scale.controller.keys.count].time
-									)
-									for i = 1 to s.scale.controller.keys.count do
-									(
-										if s.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-										at time s.scale.controller.keys[i].time
-										(
-											--AObjecthelper.transform = s.transform
-											--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world s.rotation.controller.value
-											in coordsys world AObjecthelper.scale.x = in coordsys world s.scale.x
-											in coordsys world AObjecthelper.scale.y = in coordsys world s.scale.y
-											in coordsys world AObjecthelper.scale.z = in coordsys world s.scale.z
-											pgbCount = pgbCount + 1
-											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-										)
+										--AObjecthelper.transform = bkAOATargetObject.transform
+										--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world bkAOATargetObject.rotation.controller.value
+										in coordsys world AObjecthelper.scale.x = in coordsys world bkAOATargetObject.scale.x
+										in coordsys world AObjecthelper.scale.y = in coordsys world bkAOATargetObject.scale.y
+										in coordsys world AObjecthelper.scale.z = in coordsys world bkAOATargetObject.scale.z
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
 								)
-								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl (Ok!): " + s.name
-								Process_Rollout.prgb_AAH.value = 0
-								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl (Ok!): " + bkAOATargetObject.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 
-								--Start of current object animation baking depending on target transform (attach parent bone/object)
-								if AOController != undefined and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
+							--Start of current Attach Controller animation baking
+							if AOController.position.controller.keys.count > 0 do 
+							(
+								local pgbCount = 0
+								local pgbCountTotal = AOController.position.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2: " + bkAOATargetObject.name
+								for i = 1 to AOController.position.controller.keys.count do
 								(
-									if AOAnimRangeStart < AOAnimRangeEnd do
+									if AOController.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+									at time AOController.position.controller.keys[i].time
 									(
-										if AOController.position.controller.keys.count > 0 do
-										(
-											local pgbCount = 0
-											local pgbCountTotal = AOController.position.controller.keys.count
-											Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2: " + s.name
-											for i = 1 to AOController.position.controller.keys.count do
-											(
-												if AOController.position.controller.keys[i].time > AOAnimRangeStart and AOController.position.controller.keys[i].time < AOAnimRangeEnd do
-												(
-													if AOController.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-													at time AOController.position.controller.keys[i].time
-													(
-														in coordsys world AObjecthelper.transform = in coordsys world s.transform
-														pgbCount = pgbCount + 1
-														Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-													)
-												)
-											)
-										)
-										Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2 (Ok!): " + s.name
-										Process_Rollout.prgb_AAH.value = 0
-										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-										if ClassOf AOController != targetcamera and ClassOf AOController != VRayPhysicalCamera then
-										(
-											if AOController.rotation.controller.keys.count > 0 do
-											(
-												local pgbCount = 0
-												local pgbCountTotal = AOController.rotation.controller.keys.count
-												Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2: " + s.name
-												for i = 1 to AOController.rotation.controller.keys.count do
-												(
-													if AOController.rotation.controller.keys[i].time > AOAnimRangeStart and AOController.rotation.controller.keys[i].time < AOAnimRangeEnd do
-													(
-														if AOController.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-														at time AOController.rotation.controller.keys[i].time
-														(
-															in coordsys world AObjecthelper.transform = in coordsys world s.transform
-															pgbCount = pgbCount + 1
-															Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-														)
-													)
-												)
-											)
-											Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2 (Ok!): " + s.name
-											Process_Rollout.prgb_AAH.value = 0
-											try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-										)
-										else
-										(
-											if AOController.controller.roll_angle.controller.keys.count > 0 do
-											(
-												local pgbCount = 0
-												local pgbCountTotal = AOController.controller.roll_angle.controller.keys.count
-												Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll2: " + s.name
-												for i = 1 to AOController.controller.roll_angle.controller.keys.count do
-												(
-													if AOController.controller.roll_angle.controller.keys[i].time > AOAnimRangeStart and AOController.controller.roll_angle.controller.keys[i].time < AOAnimRangeEnd do
-													(
-														if AOController.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-														at time AOController.controller.roll_angle.controller.keys[i].time
-														(
-															in coordsys world AObjecthelper.transform = in coordsys world s.transform
-															pgbCount = pgbCount + 1
-															Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-														)
-													)
-												)
-											)
-											Process_Rollout.lbl_PrcssAAH.text = "Bk attach roll2 (Ok!): " + s.name
-											Process_Rollout.prgb_AAH.value = 0
-											try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-										)
-										if AOController.scale.controller.keys.count > 0 do
-										(
-											local pgbCount = 0
-											local pgbCountTotal = AOController.scale.controller.keys.count
-											Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2: " + s.name
-											for i = 1 to AOController.scale.controller.keys.count do
-											(
-												if AOController.scale.controller.keys[i].time > AOAnimRangeStart and AOController.scale.controller.keys[i].time < AOAnimRangeEnd do
-												(
-													if AOController.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-													at time AOController.scale.controller.keys[i].time
-													(
-														in coordsys world AObjecthelper.transform = in coordsys world s.transform
-														pgbCount = pgbCount + 1
-														Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-													)
-												)
-											)
-										)
-										Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2 (Ok!): " + s.name
-										Process_Rollout.prgb_AAH.value = 0
-										try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+										--AObjecthelper.transform = AOController.transform
+										in coordsys world AObjecthelper.position.x = in coordsys world AOController.position.x
+										in coordsys world AObjecthelper.position.y = in coordsys world AOController.position.y
+										in coordsys world AObjecthelper.position.z = in coordsys world AOController.position.z
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
-								)
-								
-								--Start of current object animation baking depending detailed interval
-								if bool_DetailedAOAnim and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
-								(
-									if AOAnimRangeStart < AOAnimRangeEnd and (AOAnimRangeEnd - AOAnimRangeStart) > float_DetailedAOAnim do
-									(
-										local pgbCount = 0
-										local pgbCountTotal = (((AOAnimRangeEnd - AOAnimRangeStart)as float)/TicksPerFrame / float_DetailedAOAnim) as integer
-										Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int: " + s.name
-										local DetailedAOAnimCurrentTime = AOAnimRangeStart
-										--DetailedAOAnimCurrentTime += float_DetailedAOAnim
-										while DetailedAOAnimCurrentTime <= AOAnimRangeEnd do
-										(
-											if DetailedAOAnimCurrentTime == 0.0f do
-											(
-												isThereAZeroKeyAtAllpos = true
-												isThereAZeroKeyAtAllrot = true
-												isThereAZeroKeyAtAllscl = true
-											)
-											at time DetailedAOAnimCurrentTime
-											(
-												in coordsys world AObjecthelper.transform = in coordsys world s.transform
-												pgbCount = pgbCount + 1
-												Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-											)
-											DetailedAOAnimCurrentTime += float_DetailedAOAnim
-										)
-										--local info_str_msg = "total " + (pgbCount as string) + " of " + (pgbCountTotal as string) + " !"
-										--messageBox info_str_msg title:"SUCCESS!"
-									)
-									Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int (Ok!): " + s.name
-									Process_Rollout.prgb_AAH.value = 0
-									try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 								)
 							)
-							if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos2 (Ok!): " + bkAOATargetObject.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							if AOController.rotation.controller.keys.count > 0 do
 							(
-								deselectKeys AObjecthelper.position.controller
-								selectKeys AObjecthelper.position.controller 0.0f
-								deleteKeys AObjecthelper.position.controller #selection
-							)	
-							if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-							(	
-								deselectKeys AObjecthelper.rotation.controller
-								selectKeys AObjecthelper.rotation.controller 0.0f
-								deleteKeys AObjecthelper.rotation.controller #selection
-							)	
-							if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-							(	
-								deselectKeys AObjecthelper.scale.controller
-								selectKeys AObjecthelper.scale.controller 0.0f
-								deleteKeys AObjecthelper.scale.controller #selection
+								local pgbCount = 0
+								local pgbCountTotal = AOController.rotation.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2: " + bkAOATargetObject.name
+								for i = 1 to AOController.rotation.controller.keys.count do
+								(
+									if AOController.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+									at time AOController.rotation.controller.keys[i].time
+									(
+										--AObjecthelper.transform = AOController.transform
+										in coordsys world AObjecthelper.rotation.controller.value = in coordsys world AOController.rotation.controller.value
+										--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world AOController.transform as quat
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									)
+								)
+							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot2 (Ok!): " + bkAOATargetObject.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							if AOController.scale.controller.keys.count > 0 do
+							(
+								local pgbCount = 0
+								local pgbCountTotal = AOController.scale.controller.keys.count
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2: " + bkAOATargetObject.name
+								for i = 1 to AOController.scale.controller.keys.count do
+								(
+									if AOController.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+									at time AOController.scale.controller.keys[i].time
+									(
+										--AObjecthelper.transform = AOController.transform
+										--in coordsys world AObjecthelper.rotation.controller.value = in coordsys world AOController.rotation.controller.value
+										in coordsys world AObjecthelper.scale.x = in coordsys world AOController.scale.x
+										in coordsys world AObjecthelper.scale.y = in coordsys world AOController.scale.y
+										in coordsys world AObjecthelper.scale.z = in coordsys world AOController.scale.z
+										pgbCount = pgbCount + 1
+										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									)
+								)
+							)
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl2 (Ok!): " + bkAOATargetObject.name
+							Process_Rollout.prgb_AAH.value = 0
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							
+							
+							--Start of current object animation baking depending detailed interval
+							if bool_DetailedAOAnim and AOAnimRangeStart != undefined and AOAnimRangeEnd != undefined do
+							(
+								if AOAnimRangeStart < AOAnimRangeEnd and (AOAnimRangeEnd - AOAnimRangeStart) > float_DetailedAOAnim do
+								(
+									local pgbCount = 0
+									local pgbCountTotal = (((AOAnimRangeEnd - AOAnimRangeStart)as float)/TicksPerFrame / float_DetailedAOAnim) as integer
+									Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int: " + bkAOATargetObject.name
+									local DetailedAOAnimCurrentTime = AOAnimRangeStart
+									while DetailedAOAnimCurrentTime <= AOAnimRangeEnd do
+									(
+										if DetailedAOAnimCurrentTime == 0.0f do
+										(
+											isThereAZeroKeyAtAllpos = true
+											isThereAZeroKeyAtAllrot = true
+											isThereAZeroKeyAtAllscl = true
+										)
+										at time DetailedAOAnimCurrentTime
+										(
+											in coordsys world AObjecthelper.transform = in coordsys world bkAOATargetObject.transform
+											pgbCount = pgbCount + 1
+											Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+										)
+										DetailedAOAnimCurrentTime += float_DetailedAOAnim
+									)
+								)
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach Int (Ok!): " + bkAOATargetObject.name
+								Process_Rollout.prgb_AAH.value = 0
+								try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							)
 						)
+						if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+						(
+							deselectKeys AObjecthelper.position.controller
+							selectKeys AObjecthelper.position.controller 0.0f
+							deleteKeys AObjecthelper.position.controller #selection
+						)	
+						if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+						(	
+							deselectKeys AObjecthelper.rotation.controller
+							selectKeys AObjecthelper.rotation.controller 0.0f
+							deleteKeys AObjecthelper.rotation.controller #selection
+						)	
+						if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+						(	
+							deselectKeys AObjecthelper.scale.controller
+							selectKeys AObjecthelper.scale.controller 0.0f
+							deleteKeys AObjecthelper.scale.controller #selection
+						)
 					)
-					setUserProp s "AObjectNumber" -1
-					if getUserProp s "AOParentCNumber" != undefined and getUserProp s "AOParentCNumber" > 0 then
+					setUserProp bkAOATargetObject "AObjectNumber" -1
+					if getUserProp bkAOATargetObject "AOParentCNumber" != undefined and getUserProp bkAOATargetObject "AOParentCNumber" > 0 then
 					(
-						local currentAOParentNumber = getUserProp s "AOParentCNumber"
+						local currentAOParentNumber = getUserProp bkAOATargetObject "AOParentCNumber"
 						local AOOriginalParent
 						for AOAllO in objects do
 						(
 							if getUserProp AOAllO "AOParentPNumber" == currentAOParentNumber do
 							(
 								AOOriginalParent = AOAllO
-								--setUserProp AOAllO "AOParentPNumber" -1
 							)
 						)
-						/*for AOAllO in helpers do
-						(
-							if getUserProp AOAllO "AOParentNumber" == AObject_Number do
-							(
-								AOOriginalParent = AOAllO
-								setUserProp AOAllO "AOParentNumber" -1
-							)
-						)*/
-						if	AOOriginalParent != undefined then s.parent = AOOriginalParent
-						else s.parent = undefined
-						setUserProp s "AOParentCNumber" -1
+						if	AOOriginalParent != undefined then bkAOATargetObject.parent = AOOriginalParent
+						else bkAOATargetObject.parent = undefined
+						setUserProp bkAOATargetObject "AOParentCNumber" -1
 					)
-					else s.parent = undefined
+					else bkAOATargetObject.parent = undefined
 					if AObjecthelper != undefined do setUserProp AObjecthelper "AOHelperNumber" -1
 					--if AOController != undefined do setUserProp AOController "AOControllerNumber" -1
 					if AOController != undefined do delete AOController
-					deleteKeys s.position.controller #allKeys
-					if ClassOf s != targetcamera and ClassOf s != VRayPhysicalCamera then deleteKeys s.rotation.controller #allKeys
+					deleteKeys bkAOATargetObject.position.controller #allKeys
+					if ClassOf bkAOATargetObject != targetcamera and ClassOf bkAOATargetObject != VRayPhysicalCamera then deleteKeys bkAOATargetObject.rotation.controller #allKeys
 					else
 					(
-						--deleteKeys s.controller.roll_angle.controller #allKeys
-						
-						/*s.controller.roll_angle.controller = bezier_float()
-						for AOAllO in objects do
-						(
-							if isValidNode AOAllO do
-							(
-								if getUserProp AOAllO "AOCHelperNumber" == AObject_Number do
-								(
-									setUserProp AOAllO "AOCHelperNumber" -1
-									--delete AOAllO
-								)
-							)
-						)
-						*/
-						deleteKeys s.controller.roll_angle.controller #allKeys
+						deleteKeys bkAOATargetObject.controller.roll_angle.controller #allKeys
 					)
-					deleteKeys s.scale.controller #allKeys
+					deleteKeys bkAOATargetObject.scale.controller #allKeys
 					isThereAZeroKeyAtAllpos = false
 					isThereAZeroKeyAtAllrot = false
 					isThereAZeroKeyAtAllscl = false
@@ -1402,100 +1594,113 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 							(
 								local pgbCount = 0
 								local pgbCountTotal = AObjecthelper.position.controller.keys.count
-								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3: " + s.name
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3: " + bkAOATargetObject.name
 								for i = 1 to AObjecthelper.position.controller.keys.count do
 								(
 									if AObjecthelper.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 									at time AObjecthelper.position.controller.keys[i].time
 									(
-										--s.transform = AObjecthelper.transform
-										in coordsys world s.position.x = in coordsys world AObjecthelper.position.x
-										in coordsys world s.position.y = in coordsys world AObjecthelper.position.y
-										in coordsys world s.position.z = in coordsys world AObjecthelper.position.z
+										--bkAOATargetObject.transform = AObjecthelper.transform
+										in coordsys world bkAOATargetObject.position.x = in coordsys world AObjecthelper.position.x
+										in coordsys world bkAOATargetObject.position.y = in coordsys world AObjecthelper.position.y
+										in coordsys world bkAOATargetObject.position.z = in coordsys world AObjecthelper.position.z
 										pgbCount = pgbCount + 1
 										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
 								)
 							)
-							Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3 (Ok!): " + s.name
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach pos3 (Ok!): " + bkAOATargetObject.name
 							Process_Rollout.prgb_AAH.value = 0
 							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							if AObjecthelper.rotation.controller.keys.count > 0 do
 							(
 								local pgbCount = 0
 								local pgbCountTotal = AObjecthelper.rotation.controller.keys.count
-								Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3: " + s.name
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3: " + bkAOATargetObject.name
 								for i = 1 to AObjecthelper.rotation.controller.keys.count do
 								(
 									if AObjecthelper.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 									at time AObjecthelper.rotation.controller.keys[i].time
 									(
-										--s.transform = AObjecthelper.transform
-										if ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera then
+										--bkAOATargetObject.transform = AObjecthelper.transform
+										if ClassOf bkAOATargetObject == targetcamera or ClassOf bkAOATargetObject == VRayPhysicalCamera then
 										(
-											if AObjecthelper.transform.row2.z < 0.0 then s.controller.roll_angle = 180.0+(AObjecthelper.transform.rotation as eulerangles).y
-											else	s.controller.roll_angle = -(AObjecthelper.transform.rotation as eulerangles).y
+											if AObjecthelper.transform.row2.z < 0.0 then bkAOATargetObject.controller.roll_angle = 180.0+(AObjecthelper.transform.rotation as eulerangles).y
+											else	bkAOATargetObject.controller.roll_angle = -(AObjecthelper.transform.rotation as eulerangles).y
 										)
-										--else in coordsys world s.rotation.controller.value = in coordsys world AObjecthelper.rotation.controller.value
-										else in coordsys world s.rotation.controller.value = AObjecthelper.transform as quat
+										else in coordsys world bkAOATargetObject.rotation.controller.value = in coordsys world AObjecthelper.rotation.controller.value
+										--else in coordsys world bkAOATargetObject.rotation.controller.value = in coordsys world AObjecthelper.transform as quat
 										pgbCount = pgbCount + 1
 										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
 								)
 							)
-							Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3 (Ok!): " + s.name
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach rot3 (Ok!): " + bkAOATargetObject.name
 							Process_Rollout.prgb_AAH.value = 0
 							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							if AObjecthelper.scale.controller.keys.count > 0 do
 							(
 								local pgbCount = 0
 								local pgbCountTotal = AObjecthelper.scale.controller.keys.count
-								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl3: " + s.name
+								Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl3: " + bkAOATargetObject.name
 								for i = 1 to AObjecthelper.scale.controller.keys.count do
 								(
 									if AObjecthelper.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
 									at time AObjecthelper.scale.controller.keys[i].time
 									(
-										--s.transform = AObjecthelper.transform
-										in coordsys world s.scale.x = in coordsys world AObjecthelper.scale.x
-										in coordsys world s.scale.y = in coordsys world AObjecthelper.scale.y
-										in coordsys world s.scale.z = in coordsys world AObjecthelper.scale.z
+										--bkAOATargetObject.transform = AObjecthelper.transform
+										in coordsys world bkAOATargetObject.scale.x = in coordsys world AObjecthelper.scale.x
+										in coordsys world bkAOATargetObject.scale.y = in coordsys world AObjecthelper.scale.y
+										in coordsys world bkAOATargetObject.scale.z = in coordsys world AObjecthelper.scale.z
 										pgbCount = pgbCount + 1
 										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 									)
 								)
 							)
-							Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl3 (Ok!): " + s.name
+							Process_Rollout.lbl_PrcssAAH.text = "Bk attach scl3 (Ok!): " + bkAOATargetObject.name
 							Process_Rollout.prgb_AAH.value = 0
 							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 						)
 					)
 					if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
 					(
-						deselectKeys s.position.controller
-						selectKeys s.position.controller 0.0f
-						deleteKeys s.position.controller #selection
+						deselectKeys bkAOATargetObject.position.controller
+						selectKeys bkAOATargetObject.position.controller 0.0f
+						deleteKeys bkAOATargetObject.position.controller #selection
 					)	
 					if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
 					(	
-						deselectKeys s.rotation.controller
-						selectKeys s.rotation.controller 0.0f
-						deleteKeys s.rotation.controller #selection
+						if ClassOf bkAOATargetObject == targetcamera or ClassOf bkAOATargetObject == VRayPhysicalCamera then
+						(
+							deselectKeys bkAOATargetObject.controller.roll_angle.controller
+							selectKeys bkAOATargetObject.controller.roll_angle.controller 0.0f
+							deleteKeys bkAOATargetObject.controller.roll_angle.controller #selection
+							
+						)
+						else
+						(
+							deselectKeys bkAOATargetObject.rotation.controller
+							selectKeys bkAOATargetObject.rotation.controller 0.0f
+							deleteKeys bkAOATargetObject.rotation.controller #selection
+						)
 					)	
 					if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
 					(	
-						deselectKeys s.scale.controller
-						selectKeys s.scale.controller 0.0f
-						deleteKeys s.scale.controller #selection
+						deselectKeys bkAOATargetObject.scale.controller
+						selectKeys bkAOATargetObject.scale.controller 0.0f
+						deleteKeys bkAOATargetObject.scale.controller #selection
 					)
 					if AObjecthelper != undefined do delete AObjecthelper
-					--deleteKeys s.scale.controller
+					--deleteKeys bkAOATargetObject.scale.controller
 					wholeAttachBakingTime = (((timeStamp() - wholeAttachBakingTime) / 1000.0) as string)
-					Process_Rollout.lbl_PrcssAAH.text = "Attch baked in " + wholeAttachBakingTime + "s"
+					Process_Rollout.lbl_PrcssAAH.text = "Attach baked in " + wholeAttachBakingTime + "s"
 					Process_Rollout.prgb_AAH.value = 0
 					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					local info_str_msg = "Attach baked in " + wholeAttachBakingTime + " seconds!"
-					messageBox info_str_msg title:"SUCCESS!"
+					if bool_ShowResultDialogue == 1 do
+					(
+						local info_str_msg = "Attach baked in " + wholeAttachBakingTime + " seconds!"
+						messageBox info_str_msg title:"SUCCESS!"
+					)
 				)
 			)
 		)
@@ -1616,6 +1821,233 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 	)
 	
+	/*---------------------------------------------------------------------------------------------------*/
+	
+	fn BakeTransformKeysForArray bkArray chbPos chbRot chbScl arStart arEnd bkInterval bool_ShowResultDialogue = --arType
+	(
+		local oldAnimKeysState = GetAndOffAnimKeys()
+		local wholeBakingTransformTime = timeStamp()
+		Process_Rollout.lbl_PrcssAAH.text = "Transform Baking initialising"
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		local BakePointHelper = point size:0.1
+		BakePointHelper.scale.controller = ScaleXYZ()
+		BakePointHelper.name = "BakeObjectsTransform temp helper"
+		UpdateOrCreateAAHHelperLayer()
+		AAHHelperLayer.addnode BakePointHelper
+		local pgbCount = 0
+		local pgbCountTotal = bkArray.count
+		local isThereAZeroKeyAtAllpos = false
+		local isThereAZeroKeyAtAllrot = false
+		local isThereAZeroKeyAtAllscl = false
+		with Animate on
+		(
+			for bkArrayCurrentNode in bkArray do
+			(
+				deleteKeys BakePointHelper.position.controller
+				deleteKeys BakePointHelper.rotation.controller
+				deleteKeys BakePointHelper.scale.controller
+				local BakeRangeKeysCount = (arEnd - arStart) / bkInterval
+				if BakeRangeKeysCount > 0 do
+				(
+					Process_Rollout.lbl_PrcssAAH.text = "Baking: " + bkArrayCurrentNode.name
+					if chbPos == true do
+					(	
+						for i = 0 to BakeRangeKeysCount do
+						(
+							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllpos = true
+							at time (arStart + (i * bkInterval))
+							(
+								in coordsys parent BakePointHelper.position.x = in coordsys parent bkArrayCurrentNode.position.x
+								in coordsys parent BakePointHelper.position.y = in coordsys parent bkArrayCurrentNode.position.y
+								in coordsys parent BakePointHelper.position.z = in coordsys parent bkArrayCurrentNode.position.z
+							)
+						)
+						if arEnd == 0.0f do isThereAZeroKeyAtAllpos = true
+						at time arEnd
+						(
+							in coordsys parent BakePointHelper.position.x = in coordsys parent bkArrayCurrentNode.position.x
+							in coordsys parent BakePointHelper.position.y = in coordsys parent bkArrayCurrentNode.position.y
+							in coordsys parent BakePointHelper.position.z = in coordsys parent bkArrayCurrentNode.position.z
+						)
+						if BakePointHelper.position.controller.keys.count > 0 do
+						(
+							if BakePointHelper.position.controller.keys.count > 0 do
+							(
+								if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								(
+									deselectKeys BakePointHelper.position.controller
+									selectKeys BakePointHelper.position.controller 0.0f
+									deleteKeys BakePointHelper.position.controller #selection
+								)
+								if bkArrayCurrentNode.position.controller.keys.count > 0 do 
+								(
+									for i = 1 to bkArrayCurrentNode.position.controller.keys.count do
+									(
+										if bkArrayCurrentNode.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
+									)
+								)
+								deselectKeys bkArrayCurrentNode.position.controller
+								selectKeys bkArrayCurrentNode.position.controller arStart arEnd
+								deleteKeys bkArrayCurrentNode.position.controller #selection
+							)
+							for i = 1 to BakePointHelper.position.controller.keys.count do
+							(
+								at time BakePointHelper.position.controller.keys[i].time
+								(
+									in coordsys parent bkArrayCurrentNode.position.x = in coordsys parent BakePointHelper.position.x
+									in coordsys parent bkArrayCurrentNode.position.y = in coordsys parent BakePointHelper.position.y
+									in coordsys parent bkArrayCurrentNode.position.z = in coordsys parent BakePointHelper.position.z
+								)
+							)
+							if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							(
+								deselectKeys bkArrayCurrentNode.position.controller
+								selectKeys bkArrayCurrentNode.position.controller 0.0f
+								deleteKeys bkArrayCurrentNode.position.controller #selection
+							)
+						)
+						deleteKeys BakePointHelper.position.controller
+						deleteKeys BakePointHelper.rotation.controller
+						deleteKeys BakePointHelper.scale.controller
+					)
+					
+					if chbRot == true do
+					(	
+						for i = 0 to BakeRangeKeysCount do
+						(
+							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllrot = true
+							at time (arStart + (i * bkInterval))
+							(
+								if bkArrayCurrentNode.parent != undefined then
+									in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
+								else
+									in coordsys parent BakePointHelper.rotation.controller.value = bkArrayCurrentNode.transform as quat
+							)
+						)
+						if arEnd == 0.0f do isThereAZeroKeyAtAllrot = true
+						at time arEnd
+						(
+							if bkArrayCurrentNode.parent != undefined then
+								in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
+							else
+								in coordsys parent BakePointHelper.rotation.controller.value = bkArrayCurrentNode.transform as quat
+						)
+						if BakePointHelper.rotation.controller.keys.count > 0 do
+						(
+							if BakePointHelper.rotation.controller.keys.count > 0 do
+							(
+								if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								(
+									deselectKeys BakePointHelper.rotation.controller
+									selectKeys BakePointHelper.rotation.controller 0.0f
+									deleteKeys BakePointHelper.rotation.controller #selection
+								)
+								if bkArrayCurrentNode.rotation.controller.keys.count > 0 do 
+								(
+									for i = 1 to bkArrayCurrentNode.rotation.controller.keys.count do
+									(
+										if bkArrayCurrentNode.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+									)
+								)
+								deselectKeys bkArrayCurrentNode.rotation.controller
+								selectKeys bkArrayCurrentNode.rotation.controller arStart arEnd
+								deleteKeys bkArrayCurrentNode.rotation.controller #selection
+							)
+							for i = 1 to BakePointHelper.rotation.controller.keys.count do
+							(
+								at time BakePointHelper.rotation.controller.keys[i].time
+								(
+									in coordsys parent bkArrayCurrentNode.rotation.controller.value = BakePointHelper.transform as quat
+								)
+							)
+							if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							(
+								deselectKeys bkArrayCurrentNode.rotation.controller
+								selectKeys bkArrayCurrentNode.rotation.controller 0.0f
+								deleteKeys bkArrayCurrentNode.rotation.controller #selection
+							)
+						)
+						deleteKeys BakePointHelper.position.controller
+						deleteKeys BakePointHelper.rotation.controller
+						deleteKeys BakePointHelper.scale.controller
+					)
+					
+					if chbScl == true do
+					(	
+						bkArrayCurrentNode.scale.controller = ScaleXYZ()
+						for i = 0 to BakeRangeKeysCount do
+						(
+							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllscl = true
+							at time (arStart + (i * bkInterval))
+							(
+								in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
+								in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
+								in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
+							)
+						)
+						if arEnd == 0.0f do isThereAZeroKeyAtAllscl = true
+						at time arEnd
+						(
+							in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
+							in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
+							in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
+						)
+						if BakePointHelper.scale.controller.keys.count > 0 do
+						(
+							if BakePointHelper.scale.controller.keys.count > 0 do
+							(
+								if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								(
+									deselectKeys BakePointHelper.scale.controller
+									selectKeys BakePointHelper.scale.controller 0.0f
+									deleteKeys BakePointHelper.scale.controller #selection
+								)
+								if bkArrayCurrentNode.scale.controller.keys.count > 0 do 
+								(
+									for i = 1 to bkArrayCurrentNode.scale.controller.keys.count do
+									(
+										if bkArrayCurrentNode.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+									)
+								)
+								deselectKeys bkArrayCurrentNode.scale.controller
+								selectKeys bkArrayCurrentNode.scale.controller arStart arEnd
+								deleteKeys bkArrayCurrentNode.scale.controller #selection
+							)
+							for i = 1 to BakePointHelper.scale.controller.keys.count do
+							(
+								at time BakePointHelper.scale.controller.keys[i].time
+								(
+									in coordsys world bkArrayCurrentNode.scale.x = in coordsys world BakePointHelper.scale.x
+									in coordsys world bkArrayCurrentNode.scale.y = in coordsys world BakePointHelper.scale.y
+									in coordsys world bkArrayCurrentNode.scale.z = in coordsys world BakePointHelper.scale.z
+								)
+							)
+							if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+							(
+								deselectKeys bkArrayCurrentNode.scale.controller
+								selectKeys bkArrayCurrentNode.scale.controller 0.0f
+								deleteKeys bkArrayCurrentNode.scale.controller #selection
+							)
+						)
+					)
+					pgbCount = pgbCount + 1
+					Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+				)
+				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+			)
+		)
+		delete BakePointHelper
+		wholeBakingTransformTime = (((timeStamp() - wholeBakingTransformTime) / 1000.0) as string)
+		Process_Rollout.lbl_PrcssAAH.text = "Tf baked in " + wholeBakingTransformTime + "s"
+		Process_Rollout.prgb_AAH.value = 0
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		if bool_ShowResultDialogue == 1 do
+		(
+			local info_str_msg = "Transform baked in " + wholeBakingTransformTime + " seconds!"
+			messageBox info_str_msg title:"SUCCESS!"
+		)
+		SetBackAnimKeys oldAnimKeysState
+	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
 	/*---------------------------------------------------------------------------------------------------*/
@@ -1627,7 +2059,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		(
 			if selection[1].children.count > 0 OR selection[1].parent != undefined then
 			(
-				SelectAllHierarchy selection[1]
+				local SelAllArray = GetAllHierarchy selection[1] 0
+				clearselection()
+				select SelAllArray
 			)
 		)
 	)
@@ -1638,8 +2072,9 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 		(
 			if selection[1].children.count > 0 OR selection[1].parent != undefined then
 			(
-				SelectAllHierarchy selection[1]
-				deselectnode selection[1]
+				local SelAllArray = GetAllHierarchy selection[1] 1
+				clearselection()
+				select SelAllArray
 			)
 		)
 	)
@@ -1743,315 +2178,44 @@ rollout Main_Anim_Rollout "Main Anim" width:132 height:170
 	
 	on AttachObjTo pressed do
 	(
-		local oldAnimKeysState = GetAndOffAnimKeys()
 		if selection.count == 1 then
 		(
 			local s = selection[1]
 			if (queryBox "Select the object that you want to attach to this bone/helper/object...\n\nDo you want to continue?" title:"Attention!") do
 			(
 				clearSelection()
-				local pickedObject = pickObject prompt:"Select the object that you want to attach to this bone/helper/object..." rubberBand:[s.pos.x,s.pos.y,s.pos.z]
-				if pickedObject != undefined AND pickedObject != #escape AND pickedObject != s do
+				local pO = pickObject prompt:"Select the object that you want to attach to this bone/helper/object..." rubberBand:[s.pos.x,s.pos.y,s.pos.z]
+				if pO != undefined AND pO != #escape AND pO != s do
 				(
-					select pickedObject
-					IncreaseAONumber()
-					local pohelper = point size:0.1
-					pohelper.name = "AO_" + pickedObject.name + " old anim"
-					UpdateOrCreateAAHHelperLayer()
-					UpdateOrCreateAAHControllerLayer()
-					AAHHelperLayer.addnode pohelper
-					local isThereAZeroKeyAtAllpos = false
-					local isThereAZeroKeyAtAllrot = false
-					local isThereAZeroKeyAtAllscl = false
-					with Animate on
+					local newAOAttachController = CreateAOLink s pO 1
+					if newAOAttachController != undefined do
 					(
-						if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then
-						(
-							if pickedObject.rotation.controller.keys.count > 0 then
-							(
-								for i = 1 to pickedObject.rotation.controller.keys.count do
-								(
-									if pickedObject.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-									at time pickedObject.rotation.controller.keys[i].time
-									(
-										--pohelper.transform = pickedObject.transform
-										--in coordsys world pohelper.rotation.controller.value = in coordsys world pickedObject.rotation.controller.value
-										
-										--if pickedObject.parent != undefined then
-										--	in coordsys parent pohelper.rotation.controller.value = (pickedObject.transform * (inverse pickedObject.parent.transform)) as quat
-										--else
-										--	in coordsys parent pohelper.rotation.controller.value = pickedObject.transform as quat
-										
-										in coordsys world pohelper.rotation.controller.value = pickedObject.transform as quat
-									)
-								)
-							)
-							else
-							(
-								at time sliderTime
-								(
-									in coordsys world pohelper.transform = in coordsys world pickedObject.transform
-								)
-							)
-						)
-						else
-						(
-							if pickedObject.controller.roll_angle.controller.keys.count > 0 then
-							(
-								for i = 1 to pickedObject.controller.roll_angle.controller.keys.count do
-								(
-									if pickedObject.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-									at time pickedObject.controller.roll_angle.controller.keys[i].time
-									(
-										--pohelper.transform = pickedObject.transform
-										in coordsys world pohelper.transform = in coordsys world pickedObject.transform
-									)
-								)
-							)
-							else
-							(
-								at time sliderTime
-								(
-									--pohelper.transform = pickedObject.transform
-									in coordsys world pohelper.transform = in coordsys world pickedObject.transform
-								)
-							)
-						)
-						if pickedObject.position.controller.keys.count > 0 then
-						(
-							for i = 1 to pickedObject.position.controller.keys.count do
-							(
-								if pickedObject.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-								at time pickedObject.position.controller.keys[i].time
-								(
-									--pohelper.transform = pickedObject.transform
-									in coordsys world pohelper.position.x = in coordsys world pickedObject.position.x
-									in coordsys world pohelper.position.y = in coordsys world pickedObject.position.y
-									in coordsys world pohelper.position.z = in coordsys world pickedObject.position.z
-								)
-							)
-						)
-						else
-						(
-							at time sliderTime
-							(
-								--pohelper.transform = pickedObject.transform
-								in coordsys world pohelper.transform = in coordsys world pickedObject.transform
-							)
-						)
-						if pickedObject.scale.controller.keys.count > 0 then
-						(
-							for i = 1 to pickedObject.scale.controller.keys.count do
-							(
-								if pickedObject.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-								at time pickedObject.scale.controller.keys[i].time
-								(
-									--pohelper.transform = pickedObject.transform
-									in coordsys world pohelper.scale.x = in coordsys world pickedObject.scale.x
-									in coordsys world pohelper.scale.y = in coordsys world pickedObject.scale.y
-									in coordsys world pohelper.scale.z = in coordsys world pickedObject.scale.z
-								)
-							)
-						)
-						else
-						(
-							at time sliderTime
-							(
-								--pohelper.transform = pickedObject.transform
-								in coordsys world pohelper.transform = in coordsys world pickedObject.transform
-							)
-						)
+						select newAOAttachController
 					)
-					if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-					(
-						deselectKeys pohelper.position.controller
-						selectKeys pohelper.position.controller 0.0f
-						deleteKeys pohelper.position.controller #selection
-					)
-					if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-					(
-						deselectKeys pohelper.rotation.controller
-						selectKeys pohelper.rotation.controller 0.0f
-						deleteKeys pohelper.rotation.controller #selection
-					)
-					if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-					(
-						deselectKeys pohelper.scale.controller
-						selectKeys pohelper.scale.controller 0.0f
-						deleteKeys pohelper.scale.controller #selection
-					)
-					setUserProp pohelper "AOHelperNumber" NewAO_Number
-					--maxOps.setKeyMode = true
-					if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then deleteKeys pickedObject.rotation.controller #allKeys
-					else deleteKeys pickedObject.controller.roll_angle.controller #allKeys
-					deleteKeys pickedObject.position.controller #allKeys
-					deleteKeys pickedObject.scale.controller #allKeys
-					at time sliderTime pickedObject.transform= pohelper.transform
-					--at time sliderTime
-					--(
-					--	pickedObject.transform= pohelper.transform
-						if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera then addNewKey pickedObject.rotation.controller sliderTime
-						else addNewKey pickedObject.controller.roll_angle.controller sliderTime
-						--else addNewKey pickedObject.roll_angle.controller sliderTime
-						--else addNewKey pickedObject.transform.controller.roll_angle sliderTime
-						addNewKey pickedObject.position.controller sliderTime
-						addNewKey pickedObject.scale.controller sliderTime
-					--)
-					--maxOps.setKeyMode = false
-						
-						
-						
-						/*
-						fn IncreaseAOParentNumber =
-						(	
-							local OldAOParent_Number = -1
-							for obj in objects do
-							(
-								if getUserProp obj "AOParentPNumber" != undefined then
-								(
-									OldAOParent_Number = getUserProp obj "AOParentPNumber"
-									if OldAOParent_Number > NewAOParent_Number then NewAOParent_Number = OldAOParent_Number
-									OldAOParent_Number = -1
-								)
-								if getUserProp obj "AOParentCNumber" != undefined then
-								(
-									OldAOParent_Number = getUserProp obj "AOParentCNumber"
-									if OldAOParent_Number > NewAOParent_Number then NewAOParent_Number = OldAOParent_Number
-									OldAOParent_Number = -1
-								)
-							)
-							NewAOParent_Number = NewAOParent_Number + 1
-						)
-						
-						*/
-						
-						
-						
-						
-						
-					
-					if pickedObject.parent != undefined then
-					(
-						--setUserProp pickedObject "AOHadParent" 1
-						local currentAOParent_Number
-						if getUserProp pickedObject.parent "AOParentPNumber" != undefined and getUserProp pickedObject.parent "AOParentPNumber" > 0 then
-						(
-							currentAOParent_Number = getUserProp pickedObject.parent "AOParentPNumber"
-						)
-						else
-						(
-							IncreaseAOParentNumber()
-							currentAOParent_Number = NewAOParent_Number
-							setUserProp pickedObject.parent "AOParentPNumber" currentAOParent_Number
-						)
-						setUserProp pickedObject "AOParentCNumber" currentAOParent_Number
-						--setUserProp pickedObject.parent "AOParentNumber" NewAO_Number
-					)
-					else
-					(
-						setUserProp pickedObject "AOParentCNumber" -1						
-					)
-					
-					local newAOAttachHelper = point size:0.1
-					newAOAttachHelper.name = "AO_" + pickedObject.name + " attach controller"
-					newAOAttachHelper.cross = true
-					newAOAttachHelper.box = false
-					newAOAttachHelper.wirecolor = (color 255 106 0)
-					newAOAttachHelper.position.x = s.position.x
-					newAOAttachHelper.position.y = s.position.y
-					newAOAttachHelper.position.z = s.position.z
-					newAOAttachHelper.rotation.x_rotation = s.rotation.x_rotation
-					newAOAttachHelper.rotation.y_rotation = s.rotation.y_rotation
-					newAOAttachHelper.rotation.z_rotation = s.rotation.z_rotation
-					--s.scale.controller = ScaleXYZ()
-					--pickedObject.scale.controller = ScaleXYZ()
-					--pickedObject.scale.x = s.scale.x
-					--pickedObject.scale.y = s.scale.y
-					--pickedObject.scale.z = s.scale.z
-					newAOAttachHelper.position.controller = Position_Constraint()
-					newAOAttachHelper.position.controller.appendTarget s 50.0
-					newAOAttachHelper.rotation.controller = Orientation_Constraint()
-					newAOAttachHelper.rotation.controller.appendTarget s 50.0
-					addNewKey newAOAttachHelper.position.controller sliderTime
-					addNewKey newAOAttachHelper.rotation.controller sliderTime
-					addNewKey newAOAttachHelper.scale.controller sliderTime
-					--selectKeys newAOAttachHelper.rotation.controller
-					--deselectKeys newAOAttachHelper.rotation.controller sliderTime
-					--deleteKeys newAOAttachHelper.rotation.controller #selection
-					AAHControllerLayer.addnode newAOAttachHelper
-					freeze newAOAttachHelper
-					newAOAttachHelper.showFrozenInGray = false
-					--hide newAOAttachHelper
-					
-					
-					/*
-					local newhelper = point size:(length (p.position - s.position)) 
-					newhelper.size = (length (p.position - s.position))
-					newhelper.name = "HI_" + s.name
-					newhelper.position = s.position
-					newhelper.cross = false
-					newhelper.box = true
-					--newhelper.drawontop = true
-					newhelper.wirecolor = (color 255 0 0)
-					ikChain01.wirecolor = (color 255 0 0)
-					ikChain01.parent = newhelper
-					setUserProp newhelper "HISolverNumber" NewHI_Number
-					setUserProp newhelper "HISolverType" hitype
-					setUserProp ikChain01 "HISolverNumber" NewHI_Number
-					setUserProp ikChain01 "HISolverType" 3 -- "Chain" type
-					freeze ikChain01
-					ikChain01.showFrozenInGray = false
-					s.rotation.controller = Orientation_Constraint()
-					s.rotation.controller.appendTarget newhelper 50.0
-					*/
-					
-					
-					pickedObject.parent = newAOAttachHelper
-					if ClassOf pickedObject == targetcamera or ClassOf pickedObject == VRayPhysicalCamera do
-					(
-						local crollanglehelper = point size:0.1
-						crollanglehelper.name = "AO_" + pickedObject.name + " roll angle temp helper"
-						AAHHelperLayer.addnode crollanglehelper
-						at time sliderTime
-						(
-							crollanglehelper.transform = pohelper.transform
-						)
-						crollanglehelper.parent = newAOAttachHelper
-						pickedObject.controller.roll_angle.controller = Float_Script()
-						pickedObject.controller.roll_angle.controller.addNode "crah" (crollanglehelper)
-						--pickedObject.controller.roll_angle.controller.script = "-0.0175*(crah.transform.rotation as eulerangles).y"
-						--pickedObject.controller.roll_angle.controller.script = "0.0175*atan2(crah.transform.row1.z)(crah.transform.row3.z)"
-						--pickedObject.controller.roll_angle.controller.script = "-0.0175*crah.rotation.y_rotation"
-						--pickedObject.controller.roll_angle.controller.script = "-0.0175*(atan2(crah.transform.row3.y)(crah.transform.row3.z)+atan2(crah.transform.row3.x)(crah.transform.row3.z))"
-						--pickedObject.controller.roll_angle.controller.script = "-0.0175*crah.rotation.y_rotation"
-						pickedObject.controller.roll_angle.controller.script = "if crah.transform.row2.z < 0.0 then
-roll_angle = 3.1416+0.0175*(crah.transform.rotation as eulerangles).y
-else
-roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((ftest.transform.rotation as eulerangles).x+ftest.rotation.x_rotation)"
-						setUserProp crollanglehelper "AOCHelperNumber" NewAO_Number
-						freeze crollanglehelper
-						hide crollanglehelper
-						AAHHelperLayer.addnode crollanglehelper
-					)
-					freeze pohelper
-					hide pohelper
-					setUserProp newAOAttachHelper "AOControllerNumber" NewAO_Number  -- setUserProp s "AOBoneNumber" NewAO_Number
-					setUserProp pickedObject "AObjectNumber" NewAO_Number
-					if ClassOf pickedObject != targetcamera and ClassOf pickedObject != VRayPhysicalCamera do pickedObject.parent = newAOAttachHelper
-					local info_str_msg = "Object \"" + pickedObject.name + "\" has been successfully attached to \"" + s.name + "\"."
-					messagebox info_str_msg title:"Done!"
 				)
 			)
 		)
 		else messageBox "Select ONE bone/helper/object and THEN push that button!" title:"ERROR"
-		SetBackAnimKeys oldAnimKeysState
 	)
 	
 	on DetachObj pressed do
 	(
 		if selection.count > 0 then
 		(
-			RemoveAOLink 0 0 0.0
+			local AOAllNeededObjectsArray = #()
+			for s in selection do
+			(
+				if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do append AOAllNeededObjectsArray s
+				if getUserProp s "AOControllerNumber" != undefined and getUserProp s "AOControllerNumber" != -1 do
+				(
+					local AOSelectNumber = getUserProp s "AOControllerNumber"
+					for obj in objects do
+					(
+						if getUserProp obj "AObjectNumber" ==  AOSelectNumber do append AOAllNeededObjectsArray obj
+					)
+				)
+			)
+			if AOAllNeededObjectsArray.count > 0 do RemoveAOLink AOAllNeededObjectsArray 0 0 0.0 0
 		)
 		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
@@ -2060,7 +2224,20 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 	(
 		if selection.count > 0 then
 		(
-			RemoveAOLink 1 chkbx_DetailedAOAnim.state spn_DetailedAOAnim.value
+			local AOAllNeededObjectsArray = #()
+			for s in selection do
+			(
+				if getUserProp s "AObjectNumber" != undefined and getUserProp s "AObjectNumber" != -1 do append AOAllNeededObjectsArray s
+				if getUserProp s "AOControllerNumber" != undefined and getUserProp s "AOControllerNumber" != -1 do
+				(
+					local AOSelectNumber = getUserProp s "AOControllerNumber"
+					for obj in objects do
+					(
+						if getUserProp obj "AObjectNumber" ==  AOSelectNumber do append AOAllNeededObjectsArray obj
+					)
+				)
+			)
+			if AOAllNeededObjectsArray.count > 0 do RemoveAOLink AOAllNeededObjectsArray 1 chkbx_DetailedAOAnim.state spn_DetailedAOAnim.value 1
 		)
 		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
@@ -2276,283 +2453,11 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 		(
 			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true then
 			(
-				local oldAnimKeysState = GetAndOffAnimKeys()
 				UpdateAnimRangeStartAndEnd()
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
-					local wholeBakingTransformTime = timeStamp()
-					Process_Rollout.lbl_PrcssAAH.text = "Transform Baking initialising"
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					local BakePointHelper = point size:0.1
-					BakePointHelper.scale.controller = ScaleXYZ()
-					BakePointHelper.name = "BakeObjectsTransform temp helper"
-					UpdateOrCreateAAHHelperLayer()
-					AAHHelperLayer.addnode BakePointHelper
-					local pgbCount = 0
-					local pgbCountTotal = selection.count
-					local isThereAZeroKeyAtAllpos = false
-					local isThereAZeroKeyAtAllrot = false
-					local isThereAZeroKeyAtAllscl = false
-					with Animate on
-					(
-						for s in selection do
-						(
-							deleteKeys BakePointHelper.position.controller
-							deleteKeys BakePointHelper.rotation.controller
-							deleteKeys BakePointHelper.scale.controller
-							local BakeRangeKeysCount = (ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe) / spn_BkTrnsfrmAccuracyVal.value
-							if BakeRangeKeysCount > 0 do
-							(
-								Process_Rollout.lbl_PrcssAAH.text = "Baking: " + s.name
-								if chkbx_ACTrnsfrmKsPos.state == true do
-								(	
-									for i = 0 to BakeRangeKeysCount do
-									(
-										if (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value)) == 0.0f do isThereAZeroKeyAtAllpos = true
-										at time (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value))
-										(
-											in coordsys parent BakePointHelper.position.x = in coordsys parent s.position.x
-											in coordsys parent BakePointHelper.position.y = in coordsys parent s.position.y
-											in coordsys parent BakePointHelper.position.z = in coordsys parent s.position.z
-										)
-									)
-									if ACAnimRangeEndKeyframe == 0.0f do isThereAZeroKeyAtAllpos = true
-									at time ACAnimRangeEndKeyframe
-									(
-										in coordsys parent BakePointHelper.position.x = in coordsys parent s.position.x
-										in coordsys parent BakePointHelper.position.y = in coordsys parent s.position.y
-										in coordsys parent BakePointHelper.position.z = in coordsys parent s.position.z
-									)
-									if BakePointHelper.position.controller.keys.count > 0 do
-									(
-										if BakePointHelper.position.controller.keys.count > 0 do
-										(
-											deselectKeys s.position.controller
-											selectKeys s.position.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
-											deleteKeys s.position.controller #selection
-											if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-											(
-												deselectKeys BakePointHelper.position.controller
-												selectKeys BakePointHelper.position.controller 0.0f
-												deleteKeys BakePointHelper.position.controller #selection
-											)
-										)
-										isThereAZeroKeyAtAllpos = false
-										if s.position.controller.keys.count > 0 do 
-										(
-											for i = 1 to s.position.controller.keys.count do
-											(
-												if s.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-											)
-										)
-										for i = 1 to BakePointHelper.position.controller.keys.count do
-										(
-											at time BakePointHelper.position.controller.keys[i].time
-											(
-												in coordsys parent s.position.x = in coordsys parent BakePointHelper.position.x
-												in coordsys parent s.position.y = in coordsys parent BakePointHelper.position.y
-												in coordsys parent s.position.z = in coordsys parent BakePointHelper.position.z
-											)
-										)
-										if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-										(
-											deselectKeys s.position.controller
-											selectKeys s.position.controller 0.0f
-											deleteKeys s.position.controller #selection
-										)
-									)
-									deleteKeys BakePointHelper.position.controller
-									deleteKeys BakePointHelper.rotation.controller
-									deleteKeys BakePointHelper.scale.controller
-								)
-								
-								if chkbx_ACTrnsfrmKsRot.state == true do
-								(	
-									for i = 0 to BakeRangeKeysCount do
-									(
-										if (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value)) == 0.0f do isThereAZeroKeyAtAllrot = true
-										at time (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value))
-										(
-											--BakePointHelper.rotation.x_rotation = s.rotation.x_rotation
-											--BakePointHelper.rotation.y_rotation = s.rotation.y_rotation
-											--BakePointHelper.rotation.z_rotation = s.rotation.z_rotation
-											--BakePointHelper.rotation.w = s.rotation.w
-											--BakePointHelper.rotation.x = s.rotation.x
-											--BakePointHelper.rotation.y = s.rotation.y
-											--BakePointHelper.rotation.z = s.rotation.z
-											--in coordsys parent BakePointHelper.rotation.controller.value = in coordsys parent s.rotation.controller.value
-											--in coordsys parent BakePointHelper.rotation.x = in coordsys parent s.rotation.x
-											--in coordsys parent BakePointHelper.rotation.y = in coordsys parent s.rotation.y
-											--in coordsys parent BakePointHelper.rotation.z = in coordsys parent s.rotation.z
-											--in coordsys parent BakePointHelper.rotation.w = in coordsys parent s.rotation.w
-											
-											--in coordsys parent BakePointHelper.rotation.controller.value = (quat (in coordsys parent s.rotation.x) (in coordsys parent s.rotation.y) (in coordsys parent s.rotation.z) (in coordsys parent s.rotation.w)) --causes animation jerking!!!
-											
-											if s.parent != undefined then
-												in coordsys parent BakePointHelper.rotation.controller.value = (s.transform * (inverse s.parent.transform)) as quat
-											else
-												in coordsys parent BakePointHelper.rotation.controller.value = s.transform as quat
-											
-												--(objec1[i].transform as quat) 
-												--((objec1[i].transform * (inverse objec1[i].parent.transform)) as quat) 
-												
-												--in coordsys parent objNam.rotation.controller.value = (quat rx ry rz rw)
-										)
-									)
-									if ACAnimRangeEndKeyframe == 0.0f do isThereAZeroKeyAtAllrot = true
-									at time ACAnimRangeEndKeyframe
-									(
-										--BakePointHelper.rotation.x_rotation = s.rotation.x_rotation
-										--BakePointHelper.rotation.y_rotation = s.rotation.y_rotation
-										--BakePointHelper.rotation.z_rotation = s.rotation.z_rotation
-										--BakePointHelper.rotation.w = s.rotation.w
-										--BakePointHelper.rotation.x = s.rotation.x
-										--BakePointHelper.rotation.y = s.rotation.y
-										--BakePointHelper.rotation.z = s.rotation.z
-										--in coordsys parent BakePointHelper.rotation.controller.value = in coordsys parent s.rotation.controller.value
-										--in coordsys parent BakePointHelper.rotation.x = in coordsys parent s.rotation.x
-										--in coordsys parent BakePointHelper.rotation.y = in coordsys parent s.rotation.y
-										--in coordsys parent BakePointHelper.rotation.z = in coordsys parent s.rotation.z
-										--in coordsys parent BakePointHelper.rotation.w = in coordsys parent s.rotation.w
-										--in coordsys parent BakePointHelper.rotation.controller.value = (quat (in coordsys parent s.rotation.x) (in coordsys parent s.rotation.y) (in coordsys parent s.rotation.z) (in coordsys parent s.rotation.w)) --causes animation jerking!!!
-										
-										if s.parent != undefined then
-											in coordsys parent BakePointHelper.rotation.controller.value = (s.transform * (inverse s.parent.transform)) as quat
-										else
-											in coordsys parent BakePointHelper.rotation.controller.value = s.transform as quat
-									)
-									if BakePointHelper.rotation.controller.keys.count > 0 do
-									(
-										if BakePointHelper.rotation.controller.keys.count > 0 do
-										(
-											deselectKeys s.rotation.controller
-											selectKeys s.rotation.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
-											deleteKeys s.rotation.controller #selection
-											if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-											(
-												deselectKeys BakePointHelper.rotation.controller
-												selectKeys BakePointHelper.rotation.controller 0.0f
-												deleteKeys BakePointHelper.rotation.controller #selection
-											)
-										)
-										isThereAZeroKeyAtAllrot = false
-										if s.rotation.controller.keys.count > 0 do 
-										(
-											for i = 1 to s.rotation.controller.keys.count do
-											(
-												if s.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-											)
-										)
-										for i = 1 to BakePointHelper.rotation.controller.keys.count do
-										(
-											at time BakePointHelper.rotation.controller.keys[i].time
-											(
-												--s.rotation.x_rotation = BakePointHelper.rotation.x_rotation
-												--s.rotation.y_rotation = BakePointHelper.rotation.y_rotation
-												--s.rotation.z_rotation = BakePointHelper.rotation.z_rotation
-												--s.rotation.w = BakePointHelper.rotation.w
-												--s.rotation.x = BakePointHelper.rotation.x
-												--s.rotation.y = BakePointHelper.rotation.y
-												--s.rotation.z = BakePointHelper.rotation.z
-												--in coordsys parent s.rotation.controller.value = in coordsys parent BakePointHelper.rotation.controller.value
-												--in coordsys parent s.rotation.x = in coordsys parent BakePointHelper.rotation.x
-												--in coordsys parent s.rotation.y = in coordsys parent BakePointHelper.rotation.y
-												--in coordsys parent s.rotation.z = in coordsys parent BakePointHelper.rotation.z
-												--in coordsys parent s.rotation.w = in coordsys parent BakePointHelper.rotation.w
-												--in coordsys parent s.rotation.controller.value = (quat (in coordsys parent BakePointHelper.rotation.x) (in coordsys parent BakePointHelper.rotation.y) (in coordsys parent BakePointHelper.rotation.z) (in coordsys parent BakePointHelper.rotation.w)) --causes animation jerking!!!
-												
-												--if s.parent != undefined then
-												--	in coordsys parent s.rotation.controller.value = (BakePointHelper.transform * (inverse BakePointHelper.parent.transform)) as quat
-												--else
-													in coordsys parent s.rotation.controller.value = BakePointHelper.transform as quat
-											)
-										)
-										if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-										(
-											deselectKeys s.rotation.controller
-											selectKeys s.rotation.controller 0.0f
-											deleteKeys s.rotation.controller #selection
-										)
-									)
-									deleteKeys BakePointHelper.position.controller
-									deleteKeys BakePointHelper.rotation.controller
-									deleteKeys BakePointHelper.scale.controller
-								)
-								
-								if chkbx_ACTrnsfrmKsScale.state == true do
-								(	
-									s.scale.controller = ScaleXYZ()
-									for i = 0 to BakeRangeKeysCount do
-									(
-										if (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value)) == 0.0f do isThereAZeroKeyAtAllscl = true
-										at time (ACAnimRangeStartKeyframe + (i * spn_BkTrnsfrmAccuracyVal.value))
-										(
-											in coordsys world BakePointHelper.scale.x = in coordsys world s.scale.x
-											in coordsys world BakePointHelper.scale.y = in coordsys world s.scale.y
-											in coordsys world BakePointHelper.scale.z = in coordsys world s.scale.z
-										)
-									)
-									if ACAnimRangeEndKeyframe == 0.0f do isThereAZeroKeyAtAllscl = true
-									at time ACAnimRangeEndKeyframe
-									(
-										in coordsys world BakePointHelper.scale.x = in coordsys world s.scale.x
-										in coordsys world BakePointHelper.scale.y = in coordsys world s.scale.y
-										in coordsys world BakePointHelper.scale.z = in coordsys world s.scale.z
-									)
-									if BakePointHelper.scale.controller.keys.count > 0 do
-									(
-										if BakePointHelper.scale.controller.keys.count > 0 do
-										(
-											deselectKeys s.scale.controller
-											selectKeys s.scale.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
-											deleteKeys s.scale.controller #selection
-											if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-											(
-												deselectKeys BakePointHelper.scale.controller
-												selectKeys BakePointHelper.scale.controller 0.0f
-												deleteKeys BakePointHelper.scale.controller #selection
-											)
-										)
-										isThereAZeroKeyAtAllscl = false
-										if s.scale.controller.keys.count > 0 do 
-										(
-											for i = 1 to s.scale.controller.keys.count do
-											(
-												if s.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-											)
-										)
-										for i = 1 to BakePointHelper.scale.controller.keys.count do
-										(
-											at time BakePointHelper.scale.controller.keys[i].time
-											(
-												in coordsys world s.scale.x = in coordsys world BakePointHelper.scale.x
-												in coordsys world s.scale.y = in coordsys world BakePointHelper.scale.y
-												in coordsys world s.scale.z = in coordsys world BakePointHelper.scale.z
-											)
-										)
-										if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
-										(
-											deselectKeys s.scale.controller
-											selectKeys s.scale.controller 0.0f
-											deleteKeys s.scale.controller #selection
-										)
-									)
-								)
-								pgbCount = pgbCount + 1
-								Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-							)
-							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						)
-					)
-					delete BakePointHelper
-					wholeBakingTransformTime = (((timeStamp() - wholeBakingTransformTime) / 1000.0) as string)
-					Process_Rollout.lbl_PrcssAAH.text = "Tf baked in " + wholeBakingTransformTime + "s"
-					Process_Rollout.prgb_AAH.value = 0
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					local info_str_msg = "Transform baked in " + wholeBakingTransformTime + " seconds!"
-					messageBox info_str_msg title:"SUCCESS!"
+					BakeTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe spn_BkTrnsfrmAccuracyVal.value 1
 				)
-				SetBackAnimKeys oldAnimKeysState
 			)
 			else messageBox "Select any Transform type checkbox and THEN push that button!!" title:"ERROR"
 		)
@@ -2724,7 +2629,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 	(
 		button CreateHISolver1 "One bone" width:67 height:16 align:#left across:2 tooltip:"Creates HI Solver for selected bone.\nSelect ONE bone/helper and push this button."
 		button CreateHISolver2 "Bone + Joint" width:80 height:16 align:#right tooltip:"Creates HI Solver for selected bone and its parent joint.\nSelect ONE bone/helper and push this button."
-		button CreateControllers "Create all Controllers" height:16 tooltip:"Creates all needed controllers for the hierarchy that belongs to the selected bone.\nSelect ONE bone/helper and push this button."
+		button CreateMovementControllers "All Movement Controllers" height:16 tooltip:"Creates all needed controllers for the hierarchy that belongs to the selected bone.\nSelect ONE bone/helper and push this button."
 		button CreateHISolverEyes "Eyes" width:32 height:16 align:#left across:2 tooltip:"Creates HI Solver for selected eye pupils' bones.\nSelect ALL eye pupils' bones/helpers and push this button."
 		button DeleteHISolver "Delete for all selected" width:115 height:16 align:#right tooltip:"Deletes selected HI Solvers or HI Solvers for selected bones.\nWorks only for HI Solvers that were created by this script!\nSelect all needed bones or/and HI solvers and push this button."
 		button CreateKeysFAHIB "Bake for all selected" height:16 tooltip:"Creates anim keys for all selected bones that uses HI Solvers or for bones that uses selected HI Solvers.\nWorks only for HI Solvers that were created by this script!\nUse this before animation export.\nSelect all needed bones or/and HI solvers and push this button."
@@ -2736,34 +2641,19 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 	/*---------------------------------------------------------------------------------------------------*/
 	/*---------------------------------------------------------------------------------------------------*/
 	
-	fn RemoveHISolver BakeHIAnimFlag bool_DetailedHIAnim float_DetailedHIAnim =
+	fn RemoveIKControllers bkIKArray BakeHIAnimFlag bool_DetailedHIAnim float_DetailedHIAnim bool_ShowResultDialogue =
 	(
 		local oldAnimKeysState = GetAndOffAnimKeys()
-		local selectionArr = selection as array
-		for s in selectionArr do
+		local localbkIKArray = bkIKArray -- to prevent EXCEPTION ACCESS VIOLATION  memory error while deleting array's nodes, we need to create a local array which will be a copy of initial array
+		for bkIKArrayCurrentLimb in localbkIKArray do
 		(
-			if getUserProp s "HISolverNumber" != undefined or getUserProp s "HIJointNumber" != undefined or getUserProp s "HICBoneNumber" != undefined do
+			if isValidNode bkIKArrayCurrentLimb do
 			(
-				local HISelectNumber
-				if getUserProp s "HISolverNumber" != undefined then HISelectNumber = getUserProp s "HISolverNumber"
-				else if getUserProp s "HIJointNumber" != undefined then HISelectNumber = getUserProp s "HIJointNumber"
-				else HISelectNumber = getUserProp s "HICBoneNumber"
-				for obj in objects do
+				if getUserProp bkIKArrayCurrentLimb "HIBoneNumber" != undefined and getUserProp bkIKArrayCurrentLimb "HIBoneNumber" != -1 do
 				(
-					if getUserProp obj "HIBoneNumber" ==  HISelectNumber do selectmore obj
-				)
-			)
-		)
-		selectionArr = selection as array
-		for s in selectionArr do
-		(
-			if isValidNode s do
-			(
-				if getUserProp s "HIBoneNumber" != undefined and getUserProp s "HIBoneNumber" != -1 do
-				(
-					local HI_BoneNumber = getUserProp s "HIBoneNumber"
-					local helpersArr = helpers as array
-					for obj in helpersArr do
+					local HI_BoneNumber = getUserProp bkIKArrayCurrentLimb "HIBoneNumber"
+					local localbkIKArray2 = objects as array -- to prevent EXCEPTION ACCESS VIOLATION  memory error while deleting array's nodes, we need to create a local array which will be a copy of initial array
+					for obj in localbkIKArray2 do
 					(
 						if isValidNode obj do
 						(
@@ -2775,9 +2665,9 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 									local HI_SolverType = getUserProp obj "HISolverType"
 									local HIBoneChild
 									local HIBoneGChild
-									if s.children.count > 0 do
+									if bkIKArrayCurrentLimb.children.count > 0 do
 									(
-										for HBC in s.children do
+										for HBC in bkIKArrayCurrentLimb.children do
 										(
 											if getUserProp HBC "HICBoneNumber" == HI_BoneNumber do
 											(
@@ -2818,7 +2708,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 									(
 										for HHAll in helpers do
 										(
-											local sHIEyesNumber = getUserProp s "HIEyesNumber" 
+											local sHIEyesNumber = getUserProp bkIKArrayCurrentLimb "HIEyesNumber" 
 											if getUserProp HHAll "HIHelperNumber" == HI_BoneNumber and getUserProp HHAll "HIEyesNumber" == sHIEyesNumber do snhelper = HHAll
 											if getUserProp HHAll "HICHelperNumber" == HI_BoneNumber and getUserProp HHAll "HIEyesNumber" == sHIEyesNumber do HIBoneChildnhelper = HHAll
 										)
@@ -2875,7 +2765,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 																at time saccadeDelayTime
 																(
 																	
-																	saccadeMultiplier = (1.0 / ((length (obj.position - s.position)) * saccadePupillaryDistance - 1.0) ) * 0.002
+																	saccadeMultiplier = (1.0 / ((length (obj.position - bkIKArrayCurrentLimb.position)) * saccadePupillaryDistance - 1.0) ) * 0.002
 																	
 																	saccadeSeed += obj.position.x
 																	seed saccadeSeed
@@ -2926,7 +2816,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 													at time (saccadeAnimRangeCurrentTime - 6.0)
 													(
 														
-														saccadeMultiplier = ((length (obj.position - s.position)) * saccadePupillaryDistance) * 0.1
+														saccadeMultiplier = ((length (obj.position - bkIKArrayCurrentLimb.position)) * saccadePupillaryDistance) * 0.1
 														
 														
 														seed (obj.position.x * saccadeAnimRangeCurrentTime)
@@ -2974,7 +2864,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 													(
 														at time DetailedHIAnimCurrentTime
 														(
-															if snhelper != undefined do snhelper.transform = s.transform
+															if snhelper != undefined do snhelper.transform = bkIKArrayCurrentLimb.transform
 															if HIBoneChild != undefined and HIBoneChildnhelper != undefined do HIBoneChildnhelper.transform = HIBoneChild.transform
 															if HIBoneGChild != undefined and HIBoneGChildnhelper != undefined do HIBoneGChildnhelper.transform = HIBoneGChild.transform
 														)
@@ -3038,7 +2928,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 														(
 															at time obj.position.controller.keys[i].time
 															(
-																snhelper.transform = s.transform
+																snhelper.transform = bkIKArrayCurrentLimb.transform
 																if HIBoneChild != undefined and HIBoneChildnhelper != undefined do
 																(
 																	HIBoneChildnhelper.transform = HIBoneChild.transform
@@ -3049,9 +2939,9 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 																)
 															)
 														)
-														if (HI_SolverType == 1 or HI_SolverType == 4) and s.parent != undefined do
+														if (HI_SolverType == 1 or HI_SolverType == 4) and bkIKArrayCurrentLimb.parent != undefined do
 														(
-															local sBoneParent = s.parent
+															local sBoneParent = bkIKArrayCurrentLimb.parent
 															if sBoneParent.rotation.controller.keys.count > 0 do
 															(
 																for i = 1 to sBoneParent.rotation.controller.keys.count do
@@ -3060,7 +2950,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 																	(
 																		at time sBoneParent.rotation.controller.keys[i].time
 																		(
-																			snhelper.transform = s.transform
+																			snhelper.transform = bkIKArrayCurrentLimb.transform
 																			if HIBoneChild != undefined and HIBoneChildnhelper != undefined do
 																			(
 																				HIBoneChildnhelper.transform = HIBoneChild.transform
@@ -3107,9 +2997,9 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 															)
 														)
 													)
-													if (HI_SolverType == 1 or HI_SolverType == 4) and s.parent != undefined do
+													if (HI_SolverType == 1 or HI_SolverType == 4) and bkIKArrayCurrentLimb.parent != undefined do
 													(
-														local sBoneParent = s.parent
+														local sBoneParent = bkIKArrayCurrentLimb.parent
 														if sBoneParent.rotation.controller.keys.count > 0 do
 														(
 															for i = 1 to sBoneParent.rotation.controller.keys.count do
@@ -3138,7 +3028,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 														(
 															at time DetailedHIAnimCurrentTime
 															(
-																if snhelper != undefined do snhelper.transform = s.transform
+																if snhelper != undefined do snhelper.transform = bkIKArrayCurrentLimb.transform
 																if HIBoneChild != undefined and HIBoneChildnhelper != undefined do HIBoneChildnhelper.transform = HIBoneChild.transform
 																if HIBoneGChild != undefined and HIBoneGChildnhelper != undefined do HIBoneGChildnhelper.transform = HIBoneGChild.transform
 															)
@@ -3149,7 +3039,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 											)
 										)
 									)
-									setUserProp s "HIBoneNumber" -1
+									setUserProp bkIKArrayCurrentLimb "HIBoneNumber" -1
 									if HI_SolverType == 1 or HI_SolverType == 4 then
 									(
 										if HIBoneChild != undefined do
@@ -3167,7 +3057,8 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 											setUserProp HIBoneGChild "HICBoneNumber" -1
 										)
 									)
-									for obj2 in helpersArr do
+									local localbkIKArray3 = objects as array -- to prevent EXCEPTION ACCESS VIOLATION  memory error while deleting array's nodes, we need to create a local array which will be a copy of initial array
+									for obj2 in localbkIKArray3 do
 									(
 										if isValidNode obj2 do
 										(
@@ -3177,7 +3068,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 												(
 													if HI_SolverType == 4 then
 													(
-														if getUserProp obj2 "HISolverType" != 3 then
+														if getUserProp obj2 "HISolverType" != undefined and getUserProp obj2 "HISolverType" != 3 then
 														(
 															local HIBonesRemaining = 0
 															for obj3 in objects do
@@ -3194,15 +3085,15 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 														)
 														else
 														(
-															if getUserProp obj2 "HIEyesNumber" == getUserProp s "HIEyesNumber" do delete obj2
+															if getUserProp obj2 "HIEyesNumber" == getUserProp bkIKArrayCurrentLimb "HIEyesNumber" do delete obj2
 														)
 													)
 													else delete obj2
 												)
 											)
 										)
-									)
-									deleteKeys s.rotation.controller #allKeys
+									)------------------EXCEPTION ACCESS VIOLATION 
+									deleteKeys bkIKArrayCurrentLimb.rotation.controller #allKeys
 									if HIBoneChild != undefined do deleteKeys HIBoneChild.rotation.controller #allKeys
 									if HIBoneGChild != undefined do deleteKeys HIBoneGChild.rotation.controller #allKeys
 									with Animate on
@@ -3215,7 +3106,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 												(
 													at time snhelper.rotation.controller.keys[i].time
 													(
-														s.transform = snhelper.transform
+														bkIKArrayCurrentLimb.transform = snhelper.transform
 														if HIBoneChild != undefined do
 														(
 															if HI_SolverType == 2 do
@@ -3224,7 +3115,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 															)
 														)
 													)
-												)
+												)-------------------------------------------------
 											)
 										)
 										if HIBoneChild != undefined and HIBoneChildnhelper != undefined do
@@ -3258,8 +3149,8 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 									if HIBoneChildnhelper != undefined do delete HIBoneChildnhelper
 									if HIBoneGChildnhelper != undefined do delete HIBoneGChildnhelper
 									if HIJointhelper != undefined do delete HIJointhelper
-									--deleteKeys s.position.controller
-									--deleteKeys s.scale.controller
+									--deleteKeys bkIKArrayCurrentLimb.position.controller
+									--deleteKeys bkIKArrayCurrentLimb.scale.controller
 									if HIBoneChild != undefined do
 									(
 										--deleteKeys HIBoneChild.position.controller
@@ -3283,18 +3174,39 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 	
 	/*---------------------------------------------------------------------------------------------------*/
 	
-	fn CreateHISolver s hitype = -- hitype: "One bone", "Bone + Joint", "Chain", "Eyes" and "Joint" (1-5)
+	fn CreateHISolver s hitype bool_ShowResultDialogue = -- hitype: "One bone", "Bone + Joint", "Chain", "Eyes" and "Joint" (1-5)
 	(
+		local newhelper
 		local p = s.parent
 		if p != undefined then
 		(
 			local p2 = p.parent
 			if hitype != 2 or p2 != undefined then
 			(
+				UpdateOrCreateAAHHelperLayer()
+				UpdateOrCreateAAHControllerLayer()
 				IncreaseHIBoneNumber()
+				addNewKey s.position.controller sliderTime
+				addNewKey s.rotation.controller sliderTime
+				addNewKey s.scale.controller sliderTime
+				addNewKey p.position.controller sliderTime
+				addNewKey p.rotation.controller sliderTime
+				addNewKey p.scale.controller sliderTime
 				local snhelper = point size:0.1
+				snhelper.name = "IK_" + s.name + " old anim"
+				AAHHelperLayer.addnode snhelper
 				local hIBoneParentnhelper = point size:0.1
-				if hitype == 2 do local hIBoneGParentnhelper = point size:0.1
+				hIBoneParentnhelper.name = "IK_" + s.name + " - " + p.name + " old anim"
+				AAHHelperLayer.addnode hIBoneParentnhelper
+				if hitype == 2 do
+				(
+					addNewKey p2.position.controller sliderTime
+					addNewKey p2.rotation.controller sliderTime
+					addNewKey p2.scale.controller sliderTime
+					local hIBoneGParentnhelper = point size:0.1
+					hIBoneGParentnhelper.name = "IK_" + s.name + " - " + p2.name + " old anim"
+					AAHHelperLayer.addnode hIBoneGParentnhelper
+				)
 				with Animate on
 				(
 					if s.rotation.controller.keys.count > 0 then
@@ -3406,7 +3318,9 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 				ikChain01.transform.controller.rotThresh = 0.0--01
 				ikChain01.transform.controller.iterations = 1000
 				ikChain01.transform.controller.goalsize = 0.1
-				ikChain01.name = (s.name + " Chain")
+				ikChain01.name = "IK_" +s.name + " Chain"
+				ikChain01.wirecolor = (color 255 0 0)
+				AAHHelperLayer.addnode ikChain01
 				if hitype == 2 then
 				(
 					setUserProp p2 "HIBoneNumber" NewHI_Number
@@ -3418,15 +3332,15 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					setUserProp p "HIBoneNumber" NewHI_Number
 					setUserProp s "HICBoneNumber" NewHI_Number
 				)
-				local newhelper = point size:(length (p.position - s.position)) 
+				newhelper = point size:(length (p.position - s.position)) 
 				newhelper.size = (length (p.position - s.position))
-				newhelper.name = "HI_" + s.name
+				newhelper.name = "IK_" + s.name + " controller"
 				newhelper.position = s.position
 				newhelper.cross = false
 				newhelper.box = true
 				--newhelper.drawontop = true
 				newhelper.wirecolor = (color 255 0 0)
-				ikChain01.wirecolor = (color 255 0 0)
+				AAHControllerLayer.addnode newhelper
 				ikChain01.parent = newhelper
 				setUserProp newhelper "HISolverNumber" NewHI_Number
 				setUserProp newhelper "HISolverType" hitype
@@ -3439,16 +3353,17 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 				
 				local newjointhelper = point size:((length (p.position - s.position)) * 0.5)
 				newjointhelper.size = ((length (p.position - s.position)) * 0.5)
-				newjointhelper.name = "HI_" + s.name + " Joint"
+				newjointhelper.name = "IK_" + s.name + " Joint"
 				newjointhelper.position = p.position
 				newjointhelper.cross = false
 				newjointhelper.box = true
 				--newjointhelper.drawontop = true
 				newjointhelper.wirecolor = (color 255 0 255)
+				AAHControllerLayer.addnode newjointhelper
 				newjointhelper.parent = newhelper
 				setUserProp newjointhelper "HIJointNumber" NewHI_Number
 
-				select newhelper
+				--select newhelper
 				maxOps.setKeyMode = true
 				newhelper.transform = snhelper.transform
 				addNewKey newhelper.rotation.controller sliderTime
@@ -3469,15 +3384,22 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			)
 			else
 			(
-				local error_str_msg = "Bone " + (s.name) + " hasn't parent joint!"
-				messagebox error_str_msg title:"ERROR"
+				if bool_ShowResultDialogue == 1 do
+				(
+					local error_str_msg = "Bone " + (s.name) + " hasn't parent joint!"
+					messagebox error_str_msg title:"ERROR"
+				)
 			)
 		)
 		else
 		(
-			local error_str_msg = "Bone " + (s.name) + " hasn't parent bone!"
-			messagebox error_str_msg title:"ERROR"
+			if bool_ShowResultDialogue == 1 do
+			(
+				local error_str_msg = "Bone " + (s.name) + " hasn't parent bone!"
+				messagebox error_str_msg title:"ERROR"
+			)
 		)
+		return newhelper
 	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
@@ -3489,24 +3411,22 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 		if selection.count > 0 then
 		(
 			local s = selection[1]
-			if (HasSkinModifier s) then
+			if ClassOf s != point and ClassOf s != bone and ClassOf s != dummy then
 			(
-				for obj in s do
+				if (HasSkinModifier s) do MarkRelatedSkinBones s
+				if s.isFrozen == true then
 				(
-					if obj.isFrozen == true then
-					(
-						unfreeze obj
-					)
-					else
-					(
-						obj.showFrozenInGray = false
-						freeze obj
-					)
+					unfreeze s
+				)
+				else
+				(
+					s.showFrozenInGray = false
+					freeze s
 				)
 			)
-			else-- if getUserProp s "FrameName" != undefined then
+			else --ObjectSet geometry    -- if getUserProp s "FrameName" != undefined then
 			(
-				local s_Hierarchy = GetAllHierarchy s
+				local s_Hierarchy = GetAllHierarchy s 0
 				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
@@ -3523,7 +3443,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 						)
 					)
 				)
-				else if getUserProp s "SkinMeshName" != undefined then
+				else if getUserProp s "SkinMeshName" != undefined then -- add later SkinMeshName property for extra situations when GetSkinMeshes is not working properly
 				(
 					local SkinMeshName = getUserProp s "SkinMeshName"
 					local MeshFound = false
@@ -3560,29 +3480,27 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 		(
 			local oldAnimKeysState = GetAndOffAnimKeys()
 			local s = selection[1]
-			if (HasSkinModifier s) then
+			if ClassOf s != point and ClassOf s != bone and ClassOf s != dummy then
 			(
-				for obj in s do
+				if (HasSkinModifier s) do MarkRelatedSkinBones s
+				if ((getVisController s) == undefined) do
 				(
-					if ((getVisController obj) == undefined) do
-					(
-						obj.visibility = bezier_float()
-					)
-					if obj.visibility.controller.value != 0.6 then
-					(
-						obj.visibility.controller.value = 0.6
-						obj.backfaceCull = true
-					)
-					else
-					(
-						obj.visibility.controller.value = 1.0
-						obj.backfaceCull = false
-					)
+					s.visibility = bezier_float()
+				)
+				if s.visibility.controller.value != 0.6 then
+				(
+					s.visibility.controller.value = 0.6
+					s.backfaceCull = true
+				)
+				else
+				(
+					s.visibility.controller.value = 1.0
+					s.backfaceCull = false
 				)
 			)
-			else-- if getUserProp s "FrameName" != undefined then
+			else --ObjectSet geometry    -- if getUserProp s "FrameName" != undefined then
 			(
-				local s_Hierarchy = GetAllHierarchy s
+				local s_Hierarchy = GetAllHierarchy s 0
 				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
@@ -3647,7 +3565,12 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 		local oldAnimKeysState = GetAndOffAnimKeys()
 		if selection.count == 1 then
 		(
-			CreateHISolver selection[1] 1 -- "One bone" type
+			local newIKController = CreateHISolver selection[1] 1 1 -- "One bone" type
+			if newIKController != undefined do
+			(
+				clearselection()
+				select newIKController
+			)
 		)
 		else messageBox "Select ONE bone/helper and THEN push that button!" title:"ERROR"
 		SetBackAnimKeys oldAnimKeysState
@@ -3658,19 +3581,31 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 		local oldAnimKeysState = GetAndOffAnimKeys()
 		if selection.count == 1 then
 		(
-			CreateHISolver selection[1] 2 -- "Bone + Joint" type
+			local newIKController = CreateHISolver selection[1] 2 1 -- "Bone + Joint" type
+			if newIKController != undefined do
+			(
+				clearselection()
+				select newIKController
+			)
 		)
 		else messageBox "Select ONE bone/helper and THEN push that button!" title:"ERROR"
 		SetBackAnimKeys oldAnimKeysState
 	)
 	
-	on CreateControllers pressed do
+	on CreateMovementControllers pressed do
 	(
-		local oldAnimKeysState = GetAndOffAnimKeys()
-		if selection.count == 1 then
+		if selection.count > 0 then
 		(
-			local ccBonesArr = GetAllHierarchy selection[1]
+			UpdateOrCreateAAHHelperLayer()
+			UpdateOrCreateAAHControllerLayer()
+			local oldAnimKeysState = GetAndOffAnimKeys() 
+			local ccBonesArr = GetAllHierarchy selection[1] 0
 			local ccCH = GetCharacterHierarchy selection[1]
+			local bool_isItHumanoud
+			local bool_isItHasAnyLegs
+			local newMovementControllerSize = 0.5
+			local aMCIKLegs = #()
+			/*
 			local info_str_msg = "spineLinks: " + (ccCH.spinelinks as string) + " !\n" +
 			"legLinks: " + (ccCH.leglinks as string) + " !\n" +
 			"tailLinks: " + (ccCH.taillinks as string) + " !\n" +
@@ -3680,7 +3615,8 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			"toeLinks: " + (ccCH.toelinks as string) + " !\n" +
 			"headId: " + (ccCH.headid as string) + " !"
 			messagebox info_str_msg title:"TEST!"
-			
+			*/
+			if (queryBox "Humanoid?" title:"WARNING") do bool_isItHumanoud = 1
 			for ccbone in ccBonesArr do
 			(
 				if getUserProp ccbone "BoneID" != undefined or getUserProp ccbone "BoneId" != undefined do
@@ -3688,13 +3624,68 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 					local ccBoneId
 					if getUserProp ccbone "BoneID" != undefined  then ccBoneId = getUserProp ccbone "BoneID"
 					else ccBoneId = getUserProp ccbone "BoneId"
-					if ccBoneId == 43 or ccBoneId == 53 or ccBoneId == 24 or ccBoneId == 34 then CreateHISolver ccbone 2
+					if ccBoneId == 43 or ccBoneId == 53 or ccBoneId == 24 or ccBoneId == 34 do
+					(
+						if (ccBoneId == 24 or ccBoneId == 34) and bool_isItHumanoud != 1 do
+						(
+							newMovementControllerSize = ((length (ccBonesArr[1].position - ccbone.position)) * 0.8)
+							local newIKLegController = CreateHISolver ccbone 2 0
+							if newIKLegController != undefined do
+							(
+								append aMCIKLegs newIKLegController
+								bool_isItHasAnyLegs = 1
+							)
+						)
+						if ccBoneId == 43 or ccBoneId == 53 do
+						(
+							newMovementControllerSize = ((length (ccBonesArr[1].position - ccbone.position)) * 0.8)
+							local newIKLegController = CreateHISolver ccbone 2 0
+							if newIKLegController != undefined do
+							(
+								append aMCIKLegs newIKLegController
+								bool_isItHasAnyLegs = 1
+							)
+						)
+					)
 				)		
 			)
-			clearselection()
-			select ccBonesArr[1]
-		) 
-		SetBackAnimKeys oldAnimKeysState	
+			if bool_isItHasAnyLegs == 1 then
+			(
+				local newMovementController = point size:newMovementControllerSize
+				newMovementController.name = "MC_" + ccBonesArr[1].name + " movement controller"
+				newMovementController.cross = true
+				newMovementController.box = true
+				newMovementController.drawontop = true
+				newMovementController.wirecolor = (color 255 48 0)
+				newMovementController.position.x = ccBonesArr[1].position.x
+				newMovementController.position.y = ccBonesArr[1].position.y
+				newMovementController.position.z = ccBonesArr[1].position.z
+				newMovementController.rotation.x_rotation = ccBonesArr[1].rotation.x_rotation
+				newMovementController.rotation.y_rotation = ccBonesArr[1].rotation.y_rotation
+				newMovementController.rotation.z_rotation = ccBonesArr[1].rotation.z_rotation
+				addNewKey newMovementController.position.controller sliderTime
+				addNewKey newMovementController.rotation.controller sliderTime
+				addNewKey newMovementController.scale.controller sliderTime
+				setUserProp newMovementController "IKMovementController" 1
+				AAHControllerLayer.addnode newMovementController
+				local newMCRootAttachController = Main_Anim_Rollout.CreateAOLink newMovementController ccBonesArr[1] 0				
+				
+				
+				if aMCIKLegs.count > 0 do
+				(
+					for aMCIKLegsController in aMCIKLegs do
+					(
+						local aMCIKLegsCAttachController = Main_Anim_Rollout.CreateAOLink newMovementController aMCIKLegsController 0
+					)
+				)
+				clearselection()
+				select newMovementController
+			)
+				
+			else	messageBox "Character is not tuned properly!\n(can't find any legs' BoneID's)" title:"ERROR"
+			SetBackAnimKeys oldAnimKeysState
+		)
+		else messageBox "Select at least ONE bone/helper and THEN push that button!" title:"ERROR"	
 	)
 	
 	on CreateHISolverEyes pressed do
@@ -3842,12 +3833,91 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 	
 	on DeleteHISolver pressed do
 	(
-		RemoveHISolver 0 0 0.0
+		if selection.count > 0 then
+		(
+			local IKAllNeededObjectsArray = #()
+			local IKMovementControllerBase
+			for s in selection while IKMCFound == false do
+			(
+				if getUserProp s "IKMovementController" != undefined and getUserProp s "IKMovementController" != -1 do
+				(
+					IKMovementControllerBase = s
+					clearselection()
+					for IKMovementControllerChildren in IKMovementControllerBase.children do selectmore IKMovementControllerChildren
+					IKMCFound = true
+				)
+			)
+			for s in selection do
+			(
+				if getUserProp s "HIBoneNumber" != undefined and getUserProp s "HIBoneNumber" != -1 do append IKAllNeededObjectsArray s
+				if getUserProp s "HISolverNumber" != undefined or getUserProp s "HIJointNumber" != undefined or getUserProp s "HICBoneNumber" != undefined do
+				(
+					local HISelectNumber
+					if getUserProp s "HISolverNumber" != undefined then HISelectNumber = getUserProp s "HISolverNumber"
+					else if getUserProp s "HIJointNumber" != undefined then HISelectNumber = getUserProp s "HIJointNumber"
+					else HISelectNumber = getUserProp s "HICBoneNumber"
+					if HISelectNumber != -1 do
+					(
+						for obj in objects do
+						(
+							if getUserProp obj "HIBoneNumber" ==  HISelectNumber do append IKAllNeededObjectsArray obj
+						)
+					)
+				)
+			)
+			if IKAllNeededObjectsArray.count > 0 do RemoveIKControllers IKAllNeededObjectsArray 0 0 0.0 1
+			if IKMovementControllerBase != undefined do delete IKMovementControllerBase
+		)
+		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
 
 	on CreateKeysFAHIB pressed do
 	(
-		RemoveHISolver 1 chkbx_DetailedHIAnim.state spn_DetailedHIAnim.value
+		if selection.count > 0 then
+		(
+			local IKAllNeededObjectsArray = #()
+			local IKMovementControllerBase
+			for s in selection while IKMCFound == false do
+			(
+				if getUserProp s "IKMovementController" != undefined and getUserProp s "IKMovementController" != -1 do
+				(
+					IKMovementControllerBase = s
+					clearselection()
+					
+					
+					
+					for IKMovementControllerChildren in IKMovementControllerBase.children do
+					(
+						
+						
+						
+						selectmore IKMovementControllerChildren
+					)
+					IKMCFound = true
+				)
+			)
+			for s in selection do
+			(
+				if getUserProp s "HIBoneNumber" != undefined and getUserProp s "HIBoneNumber" != -1 do append IKAllNeededObjectsArray s
+				if getUserProp s "HISolverNumber" != undefined or getUserProp s "HIJointNumber" != undefined or getUserProp s "HICBoneNumber" != undefined do
+				(
+					local HISelectNumber
+					if getUserProp s "HISolverNumber" != undefined then HISelectNumber = getUserProp s "HISolverNumber"
+					else if getUserProp s "HIJointNumber" != undefined then HISelectNumber = getUserProp s "HIJointNumber"
+					else HISelectNumber = getUserProp s "HICBoneNumber"
+					if HISelectNumber != -1 do
+					(
+						for bkIKController in objects do
+						(
+							if getUserProp bkIKController "HIBoneNumber" ==  HISelectNumber do append IKAllNeededObjectsArray bkIKController
+						)
+					)
+				)
+			)
+			if IKAllNeededObjectsArray.count > 0 do	RemoveIKControllers IKAllNeededObjectsArray 1 chkbx_DetailedHIAnim.state spn_DetailedHIAnim.value 1
+			if IKMovementControllerBase != undefined do delete IKMovementControllerBase
+		)
+		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
 	
 	
@@ -3873,7 +3943,7 @@ rollout Face_Anim_Rollout "Face Anim" width:132 height:170
 	(
 		if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 		(
-			local cfcBonesArr = GetAllHierarchy selection[1]
+			local cfcBonesArr = GetAllHierarchy selection[1] 0
 			local cfcCH = GetCharacterHierarchy selection[1]
 			local HeadBone
 			for b in cfcBonesArr do
@@ -3911,6 +3981,393 @@ rollout Face_Anim_Rollout "Face Anim" width:132 height:170
 )
 
 /*********************************************************************************************************************************************************************/
+--// ANIMATION ADAPTATION ROLLOUT
+/*********************************************************************************************************************************************************************/
+
+/*
+	group "Animation control"
+	(
+		checkbox chkbx_ACTrnsfrmKsPos "Pos" align:#left checked:true across:3 tooltip:"Transform type:\nControl the object's position keys."
+		checkbox chkbx_ACTrnsfrmKsRot "Rot" align:#center checked:false across:3 tooltip:"Transform type:\nControl the object's rotation keys."
+		checkbox chkbx_ACTrnsfrmKsScale "Scale" align:#right checked:false across:3 tooltip:"Transform type:\nControl the object's scale keys."
+		spinner spn_ACTrnsfrmRangeStartVal "S:" range:[0.0, 999999.0, 0.0] type:#float align:#left across:2 fieldwidth:45 tooltip:"Animation Keys Range Start"
+		spinner spn_ACTrnsfrmRangeEndVal "E:" range:[0.0, 999999.0, 100.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Keys Range End"
+		radiobuttons rb_AnimKeysRange "Anim keyframes range:" labels:#("All", "Set","TimeL") columns:3 tooltip:"You can select the specified keyframes range you want to work with:\n\nAll: Will work with all the keys of the selected object(s).\n\nSet: Will work for the selected keys range you specified above (from Range Start to Range End).\n\nTimeL: Will work for the selected keys range you have selected on the animation timeline (or the range between the selected first and the last key on the timeline)."
+		
+		checkbutton ib_CASbutton "Change animation speed:" height:15 width:135 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[0,-3]
+		button CASIncrease "Increase..." width:68 height:16 align:#left across:2 tooltip:"Increases selected animation's speed as many times as specified in right field.\nIf you want slow down the animation by 2 times, then choose \"0,5\" in that field.\nSelect all needed bones/helpers/objects, then select keys range and push this button."
+		spinner spn_CASIncBy "...by:" range:[0.001, 1000.0, 2.0] type:#float align:#right fieldwidth:45
+		checkbox chkbx_CASAccuracy "Accuracy" align:#left checked:true across:2 tooltip:"Round-up the number of frames of the new animation range to the value that was chosen in the right field.\nIf you increased your animation's speed that has 25,0 frames by 2,0 times then the new range will be 12,5.\nBut if THIS checkbox was checked and value \"1,0\" was chosen - the new range will be 13,0."
+		spinner spn_CASAccuracyVal "upto:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45
+		
+		checkbutton ib_BakeAKbutton "Additional control:" height:15 width:100 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[0,-3]
+		button BakeObjectsTransformKeys "Bake Keys" width:68 height:16 align:#left across:2 tooltip:"Bakes selected object's transform animation keys.\nSelect all needed bones, choose transform type mode, keys range and frame interval in the right field and push this button."
+		spinner spn_BkTrnsfrmAccuracyVal "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Keys Baking Frame Interval"
+		button SmoothObjectsAnimation "Smooth" width:55 height:16 align:#left across:2 tooltip:"Smoothes selected object's transform animation, makes it a bit less snappy.\nSelect all needed bones, choose transform type mode and keys range and push this button.\nRepeat these steps if you are not yet satisfied the result."
+		spinner spn_SmoothTimesVal "Times:" range:[1, 100000, 1] type:#integer align:#right across:2 fieldwidth:45 tooltip:"How many times you want to smooth your animation."
+		button DeleteObjectsTransformKeys "Delete object's transform keys" height:16 tooltip:"Deletes selected object's transform animation keys.\nSelect all needed bones, choose transform type mode and keys range and push this button."
+	)
+*/
+
+rollout Anim_Adapt_Rollout "Anim Adaptation" width:132 height:170
+(
+	group "Animation Transform"
+	(
+		button AACreateSetController "Create set controller" width:110 height:16 align:#left across:2 tooltip:"Creates special Animation Transform controller"
+		button AADeleteSetController "Undo" width:37 height:16 align:#right enabled:false tooltip:"Creates special Animation Transform controller"
+		--checkbutton ib_AAAnimOffsets "Animation offsets:" height:15 width:110 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[0,-3]
+		checkbutton ib_AAAnimOffsetsPos "Offset Pos:" height:15 width:70 highlightColor:[85,75,65] checked:true enabled:false align:#left across:2 offset:[0,-3]
+		checkbutton ib_AAAnimOffsetsRot "Offset Rot:" height:15 width:70 highlightColor:[85,75,65] checked:true enabled:false align:#right across:2 offset:[0,-3]
+		spinner spn_AAPosX "X:" range:[-999999.0, 999999.0, 0.0] type:#float align:#left across:2 fieldwidth:45 tooltip:"Animation Position offset X"
+		spinner spn_AARotX "X:" range:[-999999.0, 999999.0, 0.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Rotation offset X"
+		spinner spn_AAPosY "Y:" range:[-999999.0, 999999.0, 0.0] type:#float align:#left across:2 fieldwidth:45 tooltip:"Animation Position offset Y"
+		spinner spn_AARotY "Y:" range:[-999999.0, 999999.0, 0.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Rotation offset Y"
+		spinner spn_AAPosZ "Z:" range:[-999999.0, 999999.0, -0.945] type:#float align:#left across:2 fieldwidth:45 tooltip:"Animation Position offset Z"
+		spinner spn_AARotZ "Z:" range:[-999999.0, 999999.0, 180.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Rotation offset Z"
+		button AAMixamoConversion "Mixamo magic converter" width:130 height:16 tooltip:"Automatically converts mixamo animationfrom Y-up to Z-up"
+	)
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	
+	--Process_Rollout.lbl_PrcssAAH.text = "Attch baked in " + wholeAttachBakingTime + "s"
+	--Process_Rollout.prgb_AAH.value = 0
+	
+	-- status_AAUndoOffset
+	
+	/*
+	AAControllerNumber -- base controller
+	V
+	AAControllerNumber2 -- copy of target
+	V
+	AOControllerNumber --attach controller
+	V
+	AObjectNumber -- original (target) root
+	*/
+	
+	
+	fn AnimationAdaptationUpdate =   
+	(
+		if selection.count > 0 then
+		(
+			if selection.count == 1 then
+			(
+				if status_AAUndoOffset == 0 or status_PreviousNode != $ do
+				if (getUserProp $ "AAControllerNumber" != undefined and getUserProp $ "AAControllerNumber" != -1) or (getUserProp $ "AAControllerNumber2" != undefined and getUserProp $ "AAControllerNumber2" != -1) or (getUserProp $ "AOControllerNumber" != undefined and getUserProp $ "AOControllerNumber" != -1) or (getUserProp $ "AObjectNumber" != undefined and getUserProp $ "AObjectNumber" != -1) do
+				(
+					--if getUserProp $ "AAControllerNumber" != -1 do
+					
+					AADeleteSetController.enabled = true
+				)
+			)
+			else
+			(
+				AADeleteSetController.enabled = false
+			)
+		)
+		else
+		(
+			AADeleteSetController.enabled = false
+		)
+	)
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+
+	on Anim_Adapt_Rollout  open do
+	(
+		callbacks.addScript #selectionSetChanged "Anim_Adapt_Rollout.AnimationAdaptationUpdate()" id:#se_aahaaupdate
+		AnimationAdaptationUpdate()
+	)
+
+	on Anim_Adapt_Rollout  close do
+	(
+		callbacks.removeScripts id:#se_aahaaupdate
+	)
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	/*---------------------------------------------------------------------------------------------------*/
+	
+	on AACreateSetController pressed do
+	(
+		if selection.count > 0 then
+		(
+			UpdateOrCreateAAHHelperLayer()
+			UpdateOrCreateAAHControllerLayer()
+			local oldAnimKeysState = GetAndOffAnimKeys() 
+			local cAACBonesArr = GetAllHierarchy selection[1] 0
+			--local cAACSCH = GetCharacterHierarchy selection[1]
+			--local bool_isItHasAnyLegs
+			local newAAControllerSize = 0.5
+			--local aMCIKLegs = #()
+			for cAACbone in cAACBonesArr do
+			(
+				if getUserProp cAACbone "BoneID" != undefined or getUserProp cAACbone "BoneId" != undefined do
+				(
+					local cAACBoneId
+					if getUserProp cAACbone "BoneID" != undefined  then cAACBoneId = getUserProp cAACbone "BoneID"
+					else cAACBoneId = getUserProp cAACbone "BoneId"
+					if cAACBoneId == 43 or cAACBoneId == 53 do
+					(
+						newAAControllerSize = ((length (cAACBonesArr[1].position - cAACbone.position)) * 0.8)
+						--local newIKLegController = CreateHISolver cAACbone 2 0
+						--if newIKLegController != undefined do
+						--(
+						--	append aMCIKLegs newIKLegController
+						--	bool_isItHasAnyLegs = 1
+						--)
+					)
+				)		
+			)
+			--if bool_isItHasAnyLegs == 1 then
+			
+			local newAACAnimationStart = 0.0f
+			local newAACAnimationEnd = 100.0f
+			
+
+			if cAACBonesArr[1].position.controller.keys.count > 0 do
+			(
+				newAACAnimationStart = cAACBonesArr[1].position.controller.keys[1].time
+				if cAACBonesArr[1].position.controller.keys.count > 1 do newAACAnimationEnd = cAACBonesArr[1].position.controller.keys[cAACBonesArr[1].position.controller.keys.count].time
+			)
+			if ClassOf cAACBonesArr[1] != targetcamera and ClassOf cAACBonesArr[1] != VRayPhysicalCamera then
+			(
+				if cAACBonesArr[1].rotation.controller.keys.count > 0 do
+				(
+					if newAACAnimationStart != undefined then
+					(
+						if newAACAnimationStart > cAACBonesArr[1].rotation.controller.keys[1].time do newAACAnimationStart = cAACBonesArr[1].rotation.controller.keys[1].time
+					)
+					else newAACAnimationStart = cAACBonesArr[1].rotation.controller.keys[1].time
+					if cAACBonesArr[1].rotation.controller.keys.count > 1 do
+					(
+						if newAACAnimationEnd != undefined then
+						(
+							if newAACAnimationEnd < cAACBonesArr[1].rotation.controller.keys[cAACBonesArr[1].rotation.controller.keys.count].time do newAACAnimationEnd = cAACBonesArr[1].rotation.controller.keys[cAACBonesArr[1].rotation.controller.keys.count].time
+						)
+						else newAACAnimationEnd = cAACBonesArr[1].rotation.controller.keys[cAACBonesArr[1].rotation.controller.keys.count].time
+					)
+				)
+			)
+			else
+			(
+				if cAACBonesArr[1].controller.roll_angle.controller.keys.count > 0 do
+				(
+					if newAACAnimationStart != undefined then
+					(
+						if newAACAnimationStart > cAACBonesArr[1].controller.roll_angle.controller.keys[1].time do newAACAnimationStart = cAACBonesArr[1].controller.roll_angle.controller.keys[1].time
+					)
+					else newAACAnimationStart = cAACBonesArr[1].controller.roll_angle.controller.keys[1].time
+					if cAACBonesArr[1].controller.roll_angle.controller.keys.count > 1 do
+					(
+						if newAACAnimationEnd != undefined then
+						(
+							if newAACAnimationEnd < cAACBonesArr[1].controller.roll_angle.controller.keys[cAACBonesArr[1].controller.roll_angle.controller.keys.count].time do newAACAnimationEnd = cAACBonesArr[1].controller.roll_angle.controller.keys[cAACBonesArr[1].controller.roll_angle.controller.keys.count].time
+						)
+						else newAACAnimationEnd = cAACBonesArr[1].controller.roll_angle.controller.keys[cAACBonesArr[1].controller.roll_angle.controller.keys.count].time
+					)
+				)
+			)
+			
+			
+			
+			
+			
+			
+			
+			
+			--if cAACBonesArr[1].position.controller.keys.count
+			
+			
+			--pickedObject.rotation.controller.keys[i].time == 0.0f
+			
+			local newAAController = point size:newAAControllerSize
+			newAAController.name = "AA_" + cAACBonesArr[1].name + " set controller"
+			newAAController.cross = true
+			newAAController.box = true
+			newAAController.drawontop = true
+			newAAController.wirecolor = (color 47 159 151)
+			/*
+			newAAController.position.x = cAACBonesArr[1].position.x
+			newAAController.position.y = cAACBonesArr[1].position.y
+			newAAController.position.z = cAACBonesArr[1].position.z
+			if ClassOf cAACBonesArr[1] != targetcamera and ClassOf cAACBonesArr[1] != VRayPhysicalCamera then
+			(
+				newAAController.rotation.x_rotation = cAACBonesArr[1].rotation.x_rotation
+				newAAController.rotation.y_rotation = cAACBonesArr[1].rotation.y_rotation
+				newAAController.rotation.z_rotation = cAACBonesArr[1].rotation.z_rotation
+			)			
+			else
+			(
+				--add shit later
+				
+			)
+			*/
+			addNewKey newAAController.position.controller sliderTime
+			addNewKey newAAController.rotation.controller sliderTime
+			addNewKey newAAController.scale.controller sliderTime
+			setUserProp newAAController "AASetController" 1
+			AAHControllerLayer.addnode newAAController
+			local newAASCRootAttachCloneController = copy cAACBonesArr[1]
+			newAASCRootAttachCloneController.parent = newAAController
+			newAASCRootAttachCloneController.showFrozenInGray = false
+			freeze newAASCRootAttachCloneController
+			hide newAASCRootAttachCloneController
+			local newAASCRootAttachController = Main_Anim_Rollout.CreateAOLink newAASCRootAttachCloneController cAACBonesArr[1] 0				
+
+			addNewKey newAASCRootAttachController.position.controller newAACAnimationEnd
+			addNewKey newAASCRootAttachController.rotation.controller newAACAnimationEnd
+			addNewKey newAASCRootAttachController.scale.controller newAACAnimationEnd
+
+
+			clearselection()
+			select newAAController
+			
+				
+			--else	messageBox "Character is not tuned properly!\n(can't find any legs' BoneID's)" title:"ERROR"
+			SetBackAnimKeys oldAnimKeysState
+		)
+		else messageBox "Select at least ONE bone/helper and THEN push that button!" title:"ERROR"	
+	)
+	
+	
+	
+	
+	
+	
+	
+	on AAMixamoConversion pressed do
+	(
+		if selection.count > 0 then
+		(
+			UpdateOrCreateAAHHelperLayer()
+			UpdateOrCreateAAHControllerLayer()
+			local oldAnimKeysState = GetAndOffAnimKeys() 
+			local cAACBonesArr = GetAllHierarchy selection[1] 0
+			local newAAControllerSize = 0.5
+			for cAACbone in cAACBonesArr do
+			(
+				if getUserProp cAACbone "BoneID" != undefined or getUserProp cAACbone "BoneId" != undefined do
+				(
+					local cAACBoneId
+					if getUserProp cAACbone "BoneID" != undefined  then cAACBoneId = getUserProp cAACbone "BoneID"
+					else cAACBoneId = getUserProp cAACbone "BoneId"
+					if cAACBoneId == 43 or cAACBoneId == 53 do
+					(
+						newAAControllerSize = ((length (cAACBonesArr[1].position - cAACbone.position)) * 0.8)
+					)
+				)		
+			)
+			local newAACAnimationStart = 0.0f
+			local newAACAnimationEnd = 100.0f
+			if cAACBonesArr[1].position.controller.keys.count > 0 do
+			(
+				newAACAnimationStart = cAACBonesArr[1].position.controller.keys[1].time
+				if cAACBonesArr[1].position.controller.keys.count > 1 do newAACAnimationEnd = cAACBonesArr[1].position.controller.keys[cAACBonesArr[1].position.controller.keys.count].time
+			)
+			if ClassOf cAACBonesArr[1] != targetcamera and ClassOf cAACBonesArr[1] != VRayPhysicalCamera then
+			(
+				if cAACBonesArr[1].rotation.controller.keys.count > 0 do
+				(
+					if newAACAnimationStart != undefined then
+					(
+						if newAACAnimationStart > cAACBonesArr[1].rotation.controller.keys[1].time do newAACAnimationStart = cAACBonesArr[1].rotation.controller.keys[1].time
+					)
+					else newAACAnimationStart = cAACBonesArr[1].rotation.controller.keys[1].time
+					if cAACBonesArr[1].rotation.controller.keys.count > 1 do
+					(
+						if newAACAnimationEnd != undefined then
+						(
+							if newAACAnimationEnd < cAACBonesArr[1].rotation.controller.keys[cAACBonesArr[1].rotation.controller.keys.count].time do newAACAnimationEnd = cAACBonesArr[1].rotation.controller.keys[cAACBonesArr[1].rotation.controller.keys.count].time
+						)
+						else newAACAnimationEnd = cAACBonesArr[1].rotation.controller.keys[cAACBonesArr[1].rotation.controller.keys.count].time
+					)
+				)
+			)
+			else
+			(
+				if cAACBonesArr[1].controller.roll_angle.controller.keys.count > 0 do
+				(
+					if newAACAnimationStart != undefined then
+					(
+						if newAACAnimationStart > cAACBonesArr[1].controller.roll_angle.controller.keys[1].time do newAACAnimationStart = cAACBonesArr[1].controller.roll_angle.controller.keys[1].time
+					)
+					else newAACAnimationStart = cAACBonesArr[1].controller.roll_angle.controller.keys[1].time
+					if cAACBonesArr[1].controller.roll_angle.controller.keys.count > 1 do
+					(
+						if newAACAnimationEnd != undefined then
+						(
+							if newAACAnimationEnd < cAACBonesArr[1].controller.roll_angle.controller.keys[cAACBonesArr[1].controller.roll_angle.controller.keys.count].time do newAACAnimationEnd = cAACBonesArr[1].controller.roll_angle.controller.keys[cAACBonesArr[1].controller.roll_angle.controller.keys.count].time
+						)
+						else newAACAnimationEnd = cAACBonesArr[1].controller.roll_angle.controller.keys[cAACBonesArr[1].controller.roll_angle.controller.keys.count].time
+					)
+				)
+			)
+			local newAAController = point size:newAAControllerSize
+			newAAController.name = "AA_" + cAACBonesArr[1].name + " set controller"
+			newAAController.cross = true
+			newAAController.box = true
+			newAAController.drawontop = true
+			newAAController.wirecolor = (color 47 159 151)
+			addNewKey newAAController.position.controller 0.0f
+			addNewKey newAAController.rotation.controller 0.0f
+			addNewKey newAAController.scale.controller 0.0f
+			setUserProp newAAController "AASetController" 1
+			AAHControllerLayer.addnode newAAController
+			local newAASCRootAttachCloneController = copy cAACBonesArr[1]
+			newAASCRootAttachCloneController.parent = newAAController
+			newAASCRootAttachCloneController.showFrozenInGray = false
+			freeze newAASCRootAttachCloneController
+			hide newAASCRootAttachCloneController
+			local newAASCRootAttachController = Main_Anim_Rollout.CreateAOLink newAASCRootAttachCloneController cAACBonesArr[1] 0				
+			addNewKey newAASCRootAttachController.position.controller newAACAnimationEnd
+			addNewKey newAASCRootAttachController.rotation.controller newAACAnimationEnd
+			addNewKey newAASCRootAttachController.scale.controller newAACAnimationEnd
+			clearselection()
+			--select newAAController
+			
+			at time 0.0f
+			(
+				newAAController.position.x = spn_AAPosX.value
+				newAAController.position.y = spn_AAPosY.value
+				newAAController.position.z = spn_AAPosZ.value
+				newAAController.rotation.x_rotation = spn_AARotX.value
+				newAAController.rotation.y_rotation = spn_AARotY.value
+				newAAController.rotation.z_rotation = spn_AARotZ.value
+			)	
+			
+			Main_Anim_Rollout.RemoveAOLink newAASCRootAttachController.children[1] 1 true 1.0 0
+			
+			delete newAASCRootAttachCloneController
+			delete newAAController
+			
+			animationRange = interval newAACAnimationStart newAACAnimationEnd
+			--else	messageBox "Character is not tuned properly!\n(can't find any legs' BoneID's)" title:"ERROR"
+			
+			Main_Anim_Rollout.BakeTransformKeysForArray cAACBonesArr true true true newAACAnimationStart newAACAnimationEnd 1.0 0
+			
+			local cAACAllExceptRoot = GetAllHierarchy cAACBonesArr[1] 1
+			for cAACAllExceptRootEach in cAACAllExceptRoot do
+			(
+				deleteKeys cAACAllExceptRootEach.position.controller
+				deleteKeys cAACAllExceptRootEach.scale.controller
+			)
+			deleteKeys cAACBonesArr[1].scale.controller
+
+			select cAACBonesArr[1]
+			SetBackAnimKeys oldAnimKeysState
+		)
+		else messageBox "Select at least ONE bone/helper and THEN push that button!" title:"ERROR"	
+	)
+	
+	
+	
+)
+
+/*********************************************************************************************************************************************************************/
 --// HIERARHIES ROLLOUT
 /*********************************************************************************************************************************************************************/
 
@@ -3938,7 +4395,7 @@ rollout Hierarchies_Rollout "Bones Conversion" width:132 height:170
 				
 				local oldAnimKeysState = GetAndOffAnimKeys()
 				IncreaseBipedNumber()
-				local OrigBonesArr = GetAllHierarchy selection[1]
+				local OrigBonesArr = GetAllHierarchy selection[1] 0
 				
 				/*local newBipedSpineLinks = 2
 				local newBipedLegLinks = 3
@@ -3971,7 +4428,7 @@ rollout Hierarchies_Rollout "Bones Conversion" width:132 height:170
 				local newBipedRootName = newBiped.name
 				local newBipedRootNameLength = newBipedRootName.count
 				local newBipedName = "Bpd" + substring (NewBiped_Number as string) 2 -1
-				local newBipedBonesArr = GetAllHierarchy newBiped
+				local newBipedBonesArr = GetAllHierarchy newBiped 0
 				newBiped.name = newBipedName
 				local newBipedBoneNumber = 0
 				local BipedBonesMatches = 0
@@ -4504,9 +4961,9 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 	on AboutButton pressed do
 	(
 		try (DestroyDialog AboutDialog) catch()
-		rollout AboutDialog "Another Animation Helper v.0.983b" width:275 height:315
+		rollout AboutDialog "Another Animation Helper v.0.984b" width:275 height:315
 		(
-			label abd1 "\"Another Animation Helper\" v.0.983b (Open Beta)" align:#left
+			label abd1 "\"Another Animation Helper\" v.0.984b (Open Beta)" align:#left
 			label abd2 ""
 			label abd3 "Made by Shagg_E, 2017-2022:" align:#left
 			HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
@@ -4539,12 +4996,13 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 /*********************************************************************************************************************************************************************/
 
 try (closeRolloutFloater SE_AAHWindow) catch ()
-SE_AAHWindow = NewRolloutFloater "AA Helper" 190 812 50 100
+SE_AAHWindow = NewRolloutFloater "AA Helper" 190 835 50 100
 addRollout Process_Rollout SE_AAHWindow --rolledUp:true
 addRollout Rig_Tuner_Rollout SE_AAHWindow rolledUp:true
 addRollout Main_Anim_Rollout SE_AAHWindow --rolledUp:true
-addRollout Body_Anim_Rollout SE_AAHWindow --rolledUp:true
+addRollout Body_Anim_Rollout SE_AAHWindow rolledUp:true
 --addRollout Face_Anim_Rollout SE_AAHWindow rolledUp:true
+addRollout Anim_Adapt_Rollout SE_AAHWindow --rolledUp:true
 --addRollout Hierarchies_Rollout SE_AAHWindow rolledUp:true
 addRollout Info_Rollout SE_AAHWindow rolledUp:true
 
