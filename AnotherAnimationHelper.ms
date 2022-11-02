@@ -1,5 +1,5 @@
 /**************************************************************************************************************************
-// Another Animation Helper v0.984b
+// Another Animation Helper v0.985b
 // This script was made by Shagg_E, 2017-2022
 **************************************************************************************************************************/
 
@@ -472,7 +472,7 @@ fn GetSkinMeshes selectedBones =
 						(
 							for i=1 to skTryCatchNumberOfBones while shitFound == false do 
 							(
-								sknname = skinops.getbonename sk i 0
+								local sknname = skinops.getbonename sk i 0
 								for k = 1 to sknodes.count while shitFound == false do
 								(
 									if shitFound == false and stricmp sknname sknodes[k].name == 0 do
@@ -492,6 +492,24 @@ fn GetSkinMeshes selectedBones =
 													)
 												)
 												else setUserProp obj "SkinMeshNumber" (getUserProp selectedBones[l] "SkinMeshNumber")
+												shitFound = true
+											)
+										)
+										for obj2 in objects while shitFound == false do
+										(
+											if shitFound == false and sknodes[k] == obj2 do
+											(
+												if getUserProp obj2 "SkinMeshNumber" == undefined then
+												(
+													IncreaseSkinMeshNumber()
+													setUserProp obj "SkinMeshNumber" NewSM_Number
+													local rsHierarchy = GetAllHierarchy obj2 0
+													for rsBones in rsHierarchy do
+													(
+														setUserProp rsBones "SkinMeshNumber" NewSM_Number
+													)
+												)
+												else setUserProp obj "SkinMeshNumber" (getUserProp obj2 "SkinMeshNumber")
 												shitFound = true
 											)
 										)
@@ -569,6 +587,33 @@ fn MarkRelatedSkinBones selectedMesh =
 fn RoundUp2 RValue RAccValue =
 (
 	return ((ceil (RValue / RAccValue)) * RAccValue)
+)
+
+fn copyPasteTransform pickedTm TargetTm pos rot scl =
+(
+	if pos do pickedTm.row4 = TargetTm.row4
+	if rot then
+	(
+		if scl then
+		(
+			pickedTm.row1 = TargetTm.row1
+			pickedTm.row2 = TargetTm.row2
+			pickedTm.row3 = TargetTm.row3
+		)
+		else
+		(
+			pickedTm.row1 = (length pickedTm.row1) * normalize TargetTm.row1
+			pickedTm.row2 = (length pickedTm.row2) * normalize TargetTm.row2
+			pickedTm.row3 = (length pickedTm.row3) * normalize TargetTm.row3
+		)
+	)
+	else if scl do
+	(
+		pickedTm.row1 = (normalize pickedTm.row1) * length TargetTm.row1
+		pickedTm.row2 = (normalize pickedTm.row2) * length TargetTm.row2
+		pickedTm.row3 = (normalize pickedTm.row3) * length TargetTm.row3
+	)
+	return pickedTm
 )
 
 /*********************************************************************************************************************************************************************/
@@ -1578,6 +1623,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 					if ClassOf bkAOATargetObject != targetcamera and ClassOf bkAOATargetObject != VRayPhysicalCamera then deleteKeys bkAOATargetObject.rotation.controller #allKeys
 					else
 					(
+						bkAOATargetObject.controller.roll_angle.controller = Bezier_Float()
 						deleteKeys bkAOATargetObject.controller.roll_angle.controller #allKeys
 					)
 					deleteKeys bkAOATargetObject.scale.controller #allKeys
@@ -1748,29 +1794,61 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 						)
 					)
 				)
-				if chkbx_ACTrnsfrmKsRot.state == true and s.rotation.controller.keys.count > 0 do
+				if chkbx_ACTrnsfrmKsRot.state == true do
 				(
-					for i = 1 to s.rotation.controller.keys.count do
+					if ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera then
 					(
-						if rb_AnimKeysRange.state == 1 or (rb_AnimKeysRange.state == 3 and isKeySelected s.rotation.controller i) do
+						if s.controller.roll_angle.controller.keys.count > 0 do
 						(
-							if ACAnimRangeStartKeyframe != undefined then
+							for i = 1 to s.controller.roll_angle.controller.keys.count do
 							(
-								if ACAnimRangeStartKeyframe > s.rotation.controller.keys[i].time then
+								if rb_AnimKeysRange.state == 1 or (rb_AnimKeysRange.state == 3 and isKeySelected s.controller.roll_angle.controller i) do
 								(
-									if ACAnimRangeEndKeyframe == undefined do ACAnimRangeEndKeyframe = ACAnimRangeStartKeyframe
-									ACAnimRangeStartKeyframe = s.rotation.controller.keys[i].time
-								)
-								else
-								(
-									if ACAnimRangeEndKeyframe != undefined then
+									if ACAnimRangeStartKeyframe != undefined then
 									(
-										if ACAnimRangeEndKeyframe < s.rotation.controller.keys[i].time do ACAnimRangeEndKeyframe = s.rotation.controller.keys[i].time
+										if ACAnimRangeStartKeyframe > s.controller.roll_angle.controller.keys[i].time then
+										(
+											if ACAnimRangeEndKeyframe == undefined do ACAnimRangeEndKeyframe = ACAnimRangeStartKeyframe
+											ACAnimRangeStartKeyframe = s.controller.roll_angle.controller.keys[i].time
+										)
+										else
+										(
+											if ACAnimRangeEndKeyframe != undefined then
+											(
+												if ACAnimRangeEndKeyframe < s.controller.roll_angle.controller.keys[i].time do ACAnimRangeEndKeyframe = s.controller.roll_angle.controller.keys[i].time
+											)
+											else ACAnimRangeEndKeyframe = s.controller.roll_angle.controller.keys[i].time
+										)
 									)
-									else ACAnimRangeEndKeyframe = s.rotation.controller.keys[i].time
+									else ACAnimRangeStartKeyframe = s.controller.roll_angle.controller.keys[i].time
 								)
 							)
-							else ACAnimRangeStartKeyframe = s.rotation.controller.keys[i].time
+						)
+					)
+					else if s.rotation.controller.keys.count > 0 do
+					(
+						for i = 1 to s.rotation.controller.keys.count do
+						(
+							if rb_AnimKeysRange.state == 1 or (rb_AnimKeysRange.state == 3 and isKeySelected s.rotation.controller i) do
+							(
+								if ACAnimRangeStartKeyframe != undefined then
+								(
+									if ACAnimRangeStartKeyframe > s.rotation.controller.keys[i].time then
+									(
+										if ACAnimRangeEndKeyframe == undefined do ACAnimRangeEndKeyframe = ACAnimRangeStartKeyframe
+										ACAnimRangeStartKeyframe = s.rotation.controller.keys[i].time
+									)
+									else
+									(
+										if ACAnimRangeEndKeyframe != undefined then
+										(
+											if ACAnimRangeEndKeyframe < s.rotation.controller.keys[i].time do ACAnimRangeEndKeyframe = s.rotation.controller.keys[i].time
+										)
+										else ACAnimRangeEndKeyframe = s.rotation.controller.keys[i].time
+									)
+								)
+								else ACAnimRangeStartKeyframe = s.rotation.controller.keys[i].time
+							)
 						)
 					)
 				)
@@ -1825,7 +1903,6 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 	
 	fn BakeTransformKeysForArray bkArray chbPos chbRot chbScl arStart arEnd bkInterval bool_ShowResultDialogue = --arType
 	(
-		local oldAnimKeysState = GetAndOffAnimKeys()
 		local wholeBakingTransformTime = timeStamp()
 		Process_Rollout.lbl_PrcssAAH.text = "Transform Baking initialising"
 		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
@@ -1857,17 +1934,13 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllpos = true
 							at time (arStart + (i * bkInterval))
 							(
-								in coordsys parent BakePointHelper.position.x = in coordsys parent bkArrayCurrentNode.position.x
-								in coordsys parent BakePointHelper.position.y = in coordsys parent bkArrayCurrentNode.position.y
-								in coordsys parent BakePointHelper.position.z = in coordsys parent bkArrayCurrentNode.position.z
+								in coordsys parent BakePointHelper.position = in coordsys parent bkArrayCurrentNode.position
 							)
 						)
 						if arEnd == 0.0f do isThereAZeroKeyAtAllpos = true
 						at time arEnd
 						(
-							in coordsys parent BakePointHelper.position.x = in coordsys parent bkArrayCurrentNode.position.x
-							in coordsys parent BakePointHelper.position.y = in coordsys parent bkArrayCurrentNode.position.y
-							in coordsys parent BakePointHelper.position.z = in coordsys parent bkArrayCurrentNode.position.z
+							in coordsys parent BakePointHelper.position = in coordsys parent bkArrayCurrentNode.position
 						)
 						if BakePointHelper.position.controller.keys.count > 0 do
 						(
@@ -1894,9 +1967,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							(
 								at time BakePointHelper.position.controller.keys[i].time
 								(
-									in coordsys parent bkArrayCurrentNode.position.x = in coordsys parent BakePointHelper.position.x
-									in coordsys parent bkArrayCurrentNode.position.y = in coordsys parent BakePointHelper.position.y
-									in coordsys parent bkArrayCurrentNode.position.z = in coordsys parent BakePointHelper.position.z
+									in coordsys parent bkArrayCurrentNode.position = in coordsys parent BakePointHelper.position
 								)
 							)
 							if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
@@ -1918,19 +1989,34 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllrot = true
 							at time (arStart + (i * bkInterval))
 							(
+								/*
 								if bkArrayCurrentNode.parent != undefined then
-									in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
+									--in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
+									in coordsys parent BakePointHelper.rotation.controller.value = normalize ((bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat)
+									--in coordsys parent BakePointHelper.rotation.controller.value = pickedObject.rotation.controller.value
 								else
 									in coordsys parent BakePointHelper.rotation.controller.value = bkArrayCurrentNode.transform as quat
+								*/
+								local oldTM
+								if bkArrayCurrentNode.parent != undefined then oldTM = bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)
+								else oldTM = bkArrayCurrentNode.transform
+								in coordsys parent BakePointHelper.transform = copyPasteTransform (in coordsys parent BakePointHelper.transform) oldTM false true false
 							)
 						)
 						if arEnd == 0.0f do isThereAZeroKeyAtAllrot = true
 						at time arEnd
 						(
+							/*
 							if bkArrayCurrentNode.parent != undefined then
-								in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
+								--in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
+								in coordsys parent BakePointHelper.rotation.controller.value = normalize((bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat)
 							else
 								in coordsys parent BakePointHelper.rotation.controller.value = bkArrayCurrentNode.transform as quat
+							*/
+							local oldTM
+							if bkArrayCurrentNode.parent != undefined then oldTM = bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)
+							else oldTM = bkArrayCurrentNode.transform
+							in coordsys parent BakePointHelper.transform = copyPasteTransform (in coordsys parent BakePointHelper.transform) oldTM false true false
 						)
 						if BakePointHelper.rotation.controller.keys.count > 0 do
 						(
@@ -1942,29 +2028,59 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 									selectKeys BakePointHelper.rotation.controller 0.0f
 									deleteKeys BakePointHelper.rotation.controller #selection
 								)
-								if bkArrayCurrentNode.rotation.controller.keys.count > 0 do 
+								if ClassOf bkArrayCurrentNode == targetcamera or ClassOf bkArrayCurrentNode == VRayPhysicalCamera then
 								(
-									for i = 1 to bkArrayCurrentNode.rotation.controller.keys.count do
+									if bkArrayCurrentNode.controller.roll_angle.controller.keys.count > 0 do 
 									(
-										if bkArrayCurrentNode.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										for i = 1 to bkArrayCurrentNode.controller.roll_angle.controller.keys.count do
+										(
+											if bkArrayCurrentNode.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										)
 									)
+									deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
+									selectKeys bkArrayCurrentNode.controller.roll_angle.controller arStart arEnd
+									deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
 								)
-								deselectKeys bkArrayCurrentNode.rotation.controller
-								selectKeys bkArrayCurrentNode.rotation.controller arStart arEnd
-								deleteKeys bkArrayCurrentNode.rotation.controller #selection
+								else
+								(
+									if bkArrayCurrentNode.rotation.controller.keys.count > 0 do 
+									(
+										for i = 1 to bkArrayCurrentNode.rotation.controller.keys.count do
+										(
+											if bkArrayCurrentNode.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										)
+									)
+									deselectKeys bkArrayCurrentNode.rotation.controller
+									selectKeys bkArrayCurrentNode.rotation.controller arStart arEnd
+									deleteKeys bkArrayCurrentNode.rotation.controller #selection
+								)
 							)
 							for i = 1 to BakePointHelper.rotation.controller.keys.count do
 							(
 								at time BakePointHelper.rotation.controller.keys[i].time
 								(
-									in coordsys parent bkArrayCurrentNode.rotation.controller.value = BakePointHelper.transform as quat
+									if ClassOf bkArrayCurrentNode == targetcamera or ClassOf bkArrayCurrentNode == VRayPhysicalCamera then
+									(
+										if BakePointHelper.transform.row2.z < 0.0 then in coordsys parent bkArrayCurrentNode.controller.roll_angle = 180.0+(BakePointHelper.transform.rotation as eulerangles).y
+										else	in coordsys parent bkArrayCurrentNode.controller.roll_angle = -(BakePointHelper.transform.rotation as eulerangles).y
+									)
+									else in coordsys parent bkArrayCurrentNode.rotation.controller.value = normalize (BakePointHelper.transform as quat)
 								)
 							)
 							if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
 							(
-								deselectKeys bkArrayCurrentNode.rotation.controller
-								selectKeys bkArrayCurrentNode.rotation.controller 0.0f
-								deleteKeys bkArrayCurrentNode.rotation.controller #selection
+								if ClassOf bkArrayCurrentNode == targetcamera or ClassOf bkArrayCurrentNode == VRayPhysicalCamera then
+								(
+									deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
+									selectKeys bkArrayCurrentNode.controller.roll_angle.controller 0.0f
+									deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
+								)
+								else
+								(
+									deselectKeys bkArrayCurrentNode.rotation.controller
+									selectKeys bkArrayCurrentNode.rotation.controller 0.0f
+									deleteKeys bkArrayCurrentNode.rotation.controller #selection
+								)
 							)
 						)
 						deleteKeys BakePointHelper.position.controller
@@ -1980,17 +2096,21 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllscl = true
 							at time (arStart + (i * bkInterval))
 							(
-								in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
-								in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
-								in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
+								--in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
+								--in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
+								--in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
+								if chbRot == true then BakePointHelper.transform = copyPasteTransform BakePointHelper.transform bkArrayCurrentNode.transform false true true
+								else in coordsys parent BakePointHelper.transform = in coordsys parent bkArrayCurrentNode.transform
 							)
 						)
 						if arEnd == 0.0f do isThereAZeroKeyAtAllscl = true
 						at time arEnd
 						(
-							in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
-							in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
-							in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
+							--in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
+							--in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
+							--in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
+							if chbRot == true then BakePointHelper.transform = copyPasteTransform BakePointHelper.transform bkArrayCurrentNode.transform false true true
+							else in coordsys parent BakePointHelper.transform = in coordsys parent bkArrayCurrentNode.transform
 						)
 						if BakePointHelper.scale.controller.keys.count > 0 do
 						(
@@ -2017,9 +2137,11 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							(
 								at time BakePointHelper.scale.controller.keys[i].time
 								(
-									in coordsys world bkArrayCurrentNode.scale.x = in coordsys world BakePointHelper.scale.x
-									in coordsys world bkArrayCurrentNode.scale.y = in coordsys world BakePointHelper.scale.y
-									in coordsys world bkArrayCurrentNode.scale.z = in coordsys world BakePointHelper.scale.z
+									--in coordsys world bkArrayCurrentNode.scale.x = in coordsys world BakePointHelper.scale.x
+									--in coordsys world bkArrayCurrentNode.scale.y = in coordsys world BakePointHelper.scale.y
+									--in coordsys world bkArrayCurrentNode.scale.z = in coordsys world BakePointHelper.scale.z
+									if chbRot == true then bkArrayCurrentNode.transform = copyPasteTransform bkArrayCurrentNode.transform BakePointHelper.transform false true true
+									else in coordsys parent bkArrayCurrentNode.scale.controller.value = in coordsys parent BakePointHelper.scale.controller.value
 								)
 							)
 							if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
@@ -2046,7 +2168,78 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 			local info_str_msg = "Transform baked in " + wholeBakingTransformTime + " seconds!"
 			messageBox info_str_msg title:"SUCCESS!"
 		)
-		SetBackAnimKeys oldAnimKeysState
+	)
+	
+	/*---------------------------------------------------------------------------------------------------*/
+	
+	fn DeleteTransformKeysForArray dkArray chbPos chbRot chbScl AllAnimation arStart arEnd bool_ShowResultDialogue = --arType
+	(
+		local wholeDeleteTransformTime = timeStamp()
+		Process_Rollout.lbl_PrcssAAH.text = "Transform anim deleting initialising"
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		local pgbCount = 0
+		local pgbCountTotal = selection.count
+		for dkArrayCurrentNode in dkArray do
+		(
+			Process_Rollout.lbl_PrcssAAH.text = "Del. keys: " + dkArrayCurrentNode.name
+			if AllAnimation == 1 then
+			(
+				if chbPos == true do deleteKeys dkArrayCurrentNode.position.controller
+				if chbRot == true do
+				(
+					if ClassOf dkArrayCurrentNode == targetcamera or ClassOf dkArrayCurrentNode == VRayPhysicalCamera then deleteKeys dkArrayCurrentNode.controller.roll_angle.controller
+					else deleteKeys dkArrayCurrentNode.rotation.controller
+				)
+				if chbScl == true do deleteKeys dkArrayCurrentNode.scale.controller
+			)
+			else
+			(
+				if chbPos == true and dkArrayCurrentNode.position.controller.keys.count > 0 do
+				(
+					deselectKeys dkArrayCurrentNode.position.controller
+					selectKeys dkArrayCurrentNode.position.controller arStart arEnd
+					deleteKeys dkArrayCurrentNode.position.controller #selection
+				)
+				if chbRot == true do
+				(
+					if ClassOf dkArrayCurrentNode == targetcamera or ClassOf dkArrayCurrentNode == VRayPhysicalCamera then
+					(
+						if dkArrayCurrentNode.controller.roll_angle.controller.keys.count > 0 do
+						(
+							deselectKeys dkArrayCurrentNode.controller.roll_angle.controller
+							selectKeys dkArrayCurrentNode.controller.roll_angle.controller arStart arEnd
+							deleteKeys dkArrayCurrentNode.controller.roll_angle.controller #selection
+						)
+					)
+					else
+					(
+						if dkArrayCurrentNode.rotation.controller.keys.count > 0 do
+						(
+							deselectKeys dkArrayCurrentNode.rotation.controller
+							selectKeys dkArrayCurrentNode.rotation.controller arStart arEnd
+							deleteKeys dkArrayCurrentNode.rotation.controller #selection
+						)
+					)
+				)
+				if chbScl == true and dkArrayCurrentNode.scale.controller.keys.count > 0 do
+				(
+					deselectKeys dkArrayCurrentNode.scale.controller
+					selectKeys dkArrayCurrentNode.scale.controller arStart arEnd
+					deleteKeys dkArrayCurrentNode.scale.controller #selection
+				)
+			)
+			pgbCount = pgbCount + 1
+			Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+		)
+		wholeDeleteTransformTime = (((timeStamp() - wholeDeleteTransformTime) / 1000.0) as string)
+		Process_Rollout.lbl_PrcssAAH.text = "Del finished in " + wholeDeleteTransformTime + "s"
+		Process_Rollout.prgb_AAH.value = 0
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		if bool_ShowResultDialogue == 1 do
+		(
+			local info_str_msg = "Transform anim deleted in " + wholeDeleteTransformTime + " seconds!"
+			messageBox info_str_msg title:"SUCCESS!"
+		)
 	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
@@ -2248,9 +2441,9 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 		(
 			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true then
 			(
-				local oldAnimKeysState = GetAndOffAnimKeys()
 				if spn_CASIncBy.value != 1.0 do
 				(
+					local oldAnimKeysState = GetAndOffAnimKeys()
 					UpdateAnimRangeStartAndEnd() 
 					if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 					(
@@ -2439,8 +2632,8 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							messageBox info_str_msg title:"SUCCESS!"
 						)
 					)
+					SetBackAnimKeys oldAnimKeysState
 				)
-				SetBackAnimKeys oldAnimKeysState
 			)
 			else messageBox "Select any Transform type checkbox and THEN push that button!!" title:"ERROR"
 		)
@@ -2453,11 +2646,13 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 		(
 			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true then
 			(
+				local oldAnimKeysState = GetAndOffAnimKeys()
 				UpdateAnimRangeStartAndEnd()
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
 					BakeTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe spn_BkTrnsfrmAccuracyVal.value 1
 				)
+				SetBackAnimKeys oldAnimKeysState
 			)
 			else messageBox "Select any Transform type checkbox and THEN push that button!!" title:"ERROR"
 		)
@@ -2558,52 +2753,11 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 			(
 				local oldAnimKeysState = GetAndOffAnimKeys()
 				UpdateAnimRangeStartAndEnd()
+				local allAnimationTrigger = 0
+				if rb_AnimKeysRange.state == 1 do allAnimationTrigger = 1
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
-					local wholeDeleteTransformTime = timeStamp()
-					Process_Rollout.lbl_PrcssAAH.text = "Transform anim deleting initialising"
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					local pgbCount = 0
-					local pgbCountTotal = selection.count
-					for s in selection do
-					(
-						Process_Rollout.lbl_PrcssAAH.text = "Del. keys: " + s.name
-						if rb_AnimKeysRange.state == 1 then
-						(
-							if chkbx_ACTrnsfrmKsPos.state == true do deleteKeys s.position.controller
-							if chkbx_ACTrnsfrmKsRot.state == true do deleteKeys s.rotation.controller
-							if chkbx_ACTrnsfrmKsScale.state == true do deleteKeys s.scale.controller
-						)
-						else
-						(
-							if chkbx_ACTrnsfrmKsPos.state == true and s.position.controller.keys.count > 0 do
-							(
-								deselectKeys s.position.controller
-								selectKeys s.position.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
-								deleteKeys s.position.controller #selection
-							)
-							if chkbx_ACTrnsfrmKsRot.state == true and s.rotation.controller.keys.count > 0 do
-							(
-								deselectKeys s.rotation.controller
-								selectKeys s.rotation.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
-								deleteKeys s.rotation.controller #selection
-							)
-							if chkbx_ACTrnsfrmKsScale.state == true and s.scale.controller.keys.count > 0 do
-							(
-								deselectKeys s.scale.controller
-								selectKeys s.scale.controller ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
-								deleteKeys s.scale.controller #selection
-							)
-						)
-						pgbCount = pgbCount + 1
-						Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-					)
-					wholeDeleteTransformTime = (((timeStamp() - wholeDeleteTransformTime) / 1000.0) as string)
-					Process_Rollout.lbl_PrcssAAH.text = "Del finished in " + wholeDeleteTransformTime + "s"
-					Process_Rollout.prgb_AAH.value = 0
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					local info_str_msg = "Transform anim deleted in " + wholeDeleteTransformTime + " seconds!"
-					messageBox info_str_msg title:"SUCCESS!"
+					DeleteTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state allAnimationTrigger ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe 1
 				)
 				SetBackAnimKeys oldAnimKeysState
 			)
@@ -3426,7 +3580,9 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			)
 			else --ObjectSet geometry    -- if getUserProp s "FrameName" != undefined then
 			(
-				local s_Hierarchy = GetAllHierarchy s 0
+				local s_Hierarchy = #()
+				if getUserProp s "SkinMeshNumber" != undefined and getUserProp s "SkinMeshNumber" != -1 then append s_Hierarchy s
+				else s_Hierarchy = GetAllHierarchy s 0
 				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
@@ -3500,7 +3656,9 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			)
 			else --ObjectSet geometry    -- if getUserProp s "FrameName" != undefined then
 			(
-				local s_Hierarchy = GetAllHierarchy s 0
+				local s_Hierarchy = #()
+				if getUserProp s "SkinMeshNumber" != undefined and getUserProp s "SkinMeshNumber" != -1 then append s_Hierarchy s
+				else s_Hierarchy = GetAllHierarchy s 0
 				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
@@ -3522,7 +3680,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 						)
 					)
 				)
-				else if getUserProp s "SkinMeshName" != undefined then
+				else if getUserProp s "SkinMeshName" != undefined then -- add later SkinMeshName property for extra situations when GetSkinMeshes is not working properly
 				(
 					local SkinMeshName = getUserProp s "SkinMeshName"
 					local MeshFound = false
@@ -4961,9 +5119,9 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 	on AboutButton pressed do
 	(
 		try (DestroyDialog AboutDialog) catch()
-		rollout AboutDialog "Another Animation Helper v.0.984b" width:275 height:315
+		rollout AboutDialog "Another Animation Helper v.0.985b" width:275 height:315
 		(
-			label abd1 "\"Another Animation Helper\" v.0.984b (Open Beta)" align:#left
+			label abd1 "\"Another Animation Helper\" v.0.985b (Open Beta)" align:#left
 			label abd2 ""
 			label abd3 "Made by Shagg_E, 2017-2022:" align:#left
 			HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
