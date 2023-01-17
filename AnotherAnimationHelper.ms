@@ -1,6 +1,6 @@
 /**************************************************************************************************************************
-// Another Animation Helper v0.987b
-// This script was made by Shagg_E, 2017-2022
+// Another Animation Helper v0.988b
+// This script was made by Shagg_E, 2017-2023
 **************************************************************************************************************************/
 
 global NewBH_Number = 1000
@@ -19,6 +19,10 @@ callbacks.removeScripts id:#se_rigtuner
 global Anim_Adapt_Rollout
 callbacks.removeScripts id:#se_aahaaupdate
 
+--callbacks.removeScripts id:#se_aah_boneidsupdate
+global DrawBoneIDsTrigger = false
+unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+
 global ProcessUpdateFreezeTrigger = false
 
 try (DestroyDialog ManualSubIDSetTool) catch()
@@ -26,6 +30,8 @@ try (DestroyDialog AboutDialog) catch()
 
 global ACAnimRangeStartKeyframe = undefined
 global ACAnimRangeEndKeyframe = undefined
+
+struct HierarchyFinalBoneCalc (hFBoneLevel, hFCurrentBone)
 
 struct CharacterHierarchy (spinelinks, leglinks, taillinks, fingersnumber, fingerlinks, toesnumber, toelinks, headid)
 
@@ -433,6 +439,39 @@ fn GetChildrenHierarchy objHier exceptRoot =
 	return acH
 )
 
+fn SE_AAH_FindDeeperChildren gCurFB gCurFBTemp = --&aH:#() =
+(
+	if gCurFBTemp.hFCurrentBone.children.count > 0 do
+	(
+		gCurFBTemp.hFBoneLevel = gCurFBTemp.hFBoneLevel + 1
+		for child in gCurFBTemp.hFCurrentBone.children do
+		(
+			gCurFBTemp.hFCurrentBone = child
+			gCurFBTemp = SE_AAH_FindDeeperChildren gCurFB gCurFBTemp
+		)
+		if gCurFBTemp.hFBoneLevel > gCurFB.hFBoneLevel do
+		(
+			gCurFB.hFCurrentBone = gCurFBTemp.hFCurrentBone
+			gCurFB.hFBoneLevel = gCurFBTemp.hFBoneLevel
+		)
+	)
+	return gCurFBTemp
+)
+
+fn SE_AAH_GetFinalBone objBone =
+(
+	local hCurrentFBoneLevel = 0
+	local hCurrentFBone = objBone
+	--local hCurrentFBoneLevelTemp = 0
+	--local hCurrentFBoneTemp = objBone
+	
+	local gFB = HierarchyFinalBoneCalc hCurrentFBoneLevel hCurrentFBone
+	local gFBTemp = HierarchyFinalBoneCalc hCurrentFBoneLevel hCurrentFBone
+	--HierarchyFinalBoneCalc (hFBoneLevel, hFCurrentBone)
+	gFBTemp = SE_AAH_FindDeeperChildren gFB gFBTemp --hCurrentFBoneLevel hCurrentFBone hCurrentFBoneLevelTemp hCurrentFBoneTemp
+	return gFB.hFCurrentBone
+)
+
 fn SE_AAH_GetSubID gSINode =
 (
 	local nodeSubID = -1
@@ -548,6 +587,12 @@ fn SE_AAH_GetBoundingBoxOfHierarchy sHier =
 	return boundingBox
 )
 
+fn SE_AAH_GetAngleBetweenVectors vector1 vector2 =
+(
+	theAngle = acos(dot (normalize vector1) (normalize vector2))
+	return theAngle
+)
+
 fn SE_AAH_GetHierarchyFacingVector sHier fullBB =
 (
 	local realCharRoot
@@ -555,120 +600,287 @@ fn SE_AAH_GetHierarchyFacingVector sHier fullBB =
 	(
 		if sHierBone.children.count > 2 and realCharRoot == undefined do realCharRoot = sHierBone
 	)
-	local realRootFacingHelper = point size:0.1
-	local realRootFacingHelperXMin = point size:0.1
-	local realRootFacingHelperXMax = point size:0.1
-	local realRootFacingHelperYMin = point size:0.1
-	local realRootFacingHelperYMax = point size:0.1
-	local realRootFacingHelperZMin = point size:0.1
-	local realRootFacingHelperZMax = point size:0.1
-	
-	in coordsys world realRootFacingHelper.position = in coordsys world realCharRoot.position
-	
-	in coordsys world realRootFacingHelperXMin.position.x = in coordsys world realCharRoot.position.x-1
-	in coordsys world realRootFacingHelperXMin.position.y = in coordsys world realCharRoot.position.y
-	in coordsys world realRootFacingHelperXMin.position.z = in coordsys world realCharRoot.position.z
-	realRootFacingHelperXMin.parent = realRootFacingHelper
-	in coordsys world realRootFacingHelperXMax.position.x = in coordsys world realCharRoot.position.x+1
-	in coordsys world realRootFacingHelperXMax.position.y = in coordsys world realCharRoot.position.y
-	in coordsys world realRootFacingHelperXMax.position.z = in coordsys world realCharRoot.position.z
-	realRootFacingHelperXMax.parent = realRootFacingHelper
-	
-	in coordsys world realRootFacingHelperYMin.position.x = in coordsys world realCharRoot.position.x
-	in coordsys world realRootFacingHelperYMin.position.y = in coordsys world realCharRoot.position.y-1
-	in coordsys world realRootFacingHelperYMin.position.z = in coordsys world realCharRoot.position.z
-	realRootFacingHelperYMin.parent = realRootFacingHelper
-	in coordsys world realRootFacingHelperYMax.position.x = in coordsys world realCharRoot.position.x
-	in coordsys world realRootFacingHelperYMax.position.y = in coordsys world realCharRoot.position.y+1
-	in coordsys world realRootFacingHelperYMax.position.z = in coordsys world realCharRoot.position.z
-	realRootFacingHelperYMax.parent = realRootFacingHelper
-	
-	in coordsys world realRootFacingHelperZMin.position.x = in coordsys world realCharRoot.position.x
-	in coordsys world realRootFacingHelperZMin.position.y = in coordsys world realCharRoot.position.y
-	in coordsys world realRootFacingHelperZMin.position.z = in coordsys world realCharRoot.position.z-1
-	realRootFacingHelperZMin.parent = realRootFacingHelper
-	in coordsys world realRootFacingHelperZMax.position.x = in coordsys world realCharRoot.position.x
-	in coordsys world realRootFacingHelperZMax.position.y = in coordsys world realCharRoot.position.y
-	in coordsys world realRootFacingHelperZMax.position.z = in coordsys world realCharRoot.position.z+1
-	realRootFacingHelperZMax.parent = realRootFacingHelper
-	
-	in coordsys world realRootFacingHelper.rotation.x_rotation = in coordsys world realCharRoot.rotation.x_rotation
-	in coordsys world realRootFacingHelper.rotation.y_rotation = in coordsys world realCharRoot.rotation.y_rotation
-	in coordsys world realRootFacingHelper.rotation.z_rotation = in coordsys world realCharRoot.rotation.z_rotation
-	
-	
-	
-	
-	/*
-	--UpdateOrCreateAAHHelperLayer()
-	local boundingBox = box()
-	boundingBox.wirecolor = sHier[1].wirecolor
-	if ((getVisController boundingBox) == undefined) do
+	if realCharRoot != undefined then
 	(
-		boundingBox.visibility = bezier_float()
-	)
-	boundingBox.visibility.controller.value = 0.6
-	boundingBox.backfaceCull = true
-	local bbMinX = sHier[1].transform.position.x
-	local bbMaxX = sHier[1].transform.position.x
-	local bbMinY = sHier[1].transform.position.y
-	local bbMaxY = sHier[1].transform.position.y
-	local bbMinZ = sHier[1].transform.position.z
-	local bbMaxZ = sHier[1].transform.position.z
-	for bbBone in sHier do
-	(
-		if bbBone.transform.position.x <  bbMinX do bbMinX = bbBone.transform.position.x
-		if bbBone.transform.position.x >  bbMaxX do bbMaxX = bbBone.transform.position.x
-		if bbBone.transform.position.y <  bbMinY do bbMinY = bbBone.transform.position.y
-		if bbBone.transform.position.y >  bbMaxY do bbMaxY = bbBone.transform.position.y
-		if bbBone.transform.position.z <  bbMinZ do bbMinZ = bbBone.transform.position.z
-		if bbBone.transform.position.z >  bbMaxZ do bbMaxZ = bbBone.transform.position.z
-	)
-	boundingBox.width = bbMaxX - bbMinX
-	boundingBox.length = bbMaxY - bbMinY
-	boundingBox.height = bbMaxZ - bbMinZ
-	boundingBox.pivot = boundingBox.center --CenterPivot boundingBox
-	boundingBox.position.x = bbMaxX - (bbMaxX - bbMinX)/2
-	boundingBox.position.y = bbMaxY - (bbMaxY - bbMinY)/2
-	boundingBox.position.z = bbMaxZ - (bbMaxZ - bbMinZ)/2
-	--local showBBInfo = (bbMinX as string) + " " + (bbMaxX as string) + "\n" + (bbMinY as string) + " " + (bbMaxY as string) + "\n" + (bbMinZ as string) + " " + (bbMaxZ as string)
-	--messageBox showBBInfo
-	
-	--AAHHelperLayer.addnode boundingBox
-	
-	
-	*/
-	
+		format "Real Root is %. Found children bones: %\n" realCharRoot.name realCharRoot.children.count
+		
+		local realCharThigh
+		
+		local realRootHelper = point size:0.1
+		realRootHelper.name = realCharRoot.name + " RRHelper"
+		in coordsys world realRootHelper.transform = in coordsys world realCharRoot.transform
+		
+		local realRootHChild1= point size:0.1
+		realRootHChild1.name = realCharRoot.children[1].name + " RRHelper1"
+		in coordsys world realRootHChild1.transform = in coordsys world realCharRoot.children[1].transform
+		realRootHChild1.parent = realRootHelper
+		if realCharRoot.children[1].children.count > 0 do
+		(
+			local realRootHChild1Child= point size:0.1
+			realRootHChild1Child.name = realCharRoot.children[1].children[1].name + " RRHelper1Child"
+			in coordsys world realRootHChild1Child.transform = in coordsys world realCharRoot.children[1].children[1].transform
+			realRootHChild1Child.parent = realRootHChild1
+		)
+		local realRootHChild2= point size:0.1
+		realRootHChild2.name = realCharRoot.children[2].name + " RRHelper2"
+		in coordsys world realRootHChild2.transform = in coordsys world realCharRoot.children[2].transform
+		realRootHChild2.parent = realRootHelper
+		if realCharRoot.children[2].children.count > 0 do
+		(
+			local realRootHChild2Child= point size:0.1
+			realRootHChild2Child.name = realCharRoot.children[2].children[1].name + " RRHelper2Child"
+			in coordsys world realRootHChild2Child.transform = in coordsys world realCharRoot.children[2].children[1].transform
+			realRootHChild2Child.parent = realRootHChild2
+		)
+		local realRootHChild3= point size:0.1
+		realRootHChild3.name = realCharRoot.children[3].name + " RRHelper3"
+		in coordsys world realRootHChild3.transform = in coordsys world realCharRoot.children[3].transform
+		realRootHChild3.parent = realRootHelper
+		if realCharRoot.children[3].children.count > 0 do
+		(
+			local realRootHChild3Child= point size:0.1
+			realRootHChild3Child.name = realCharRoot.children[3].children[1].name + " RRHelper3Child"
+			in coordsys world realRootHChild3Child.transform = in coordsys world realCharRoot.children[3].children[1].transform
+			realRootHChild3Child.parent = realRootHChild3
+		)
+		
+		
+		in coordsys world realRootHelper.position = [0.0,0.0,0.0]
+		--in coordsys world realRootHelper.rotation = [0.0,0.0,0.0]
+		--in coordsys world realRootHelper.rotation.x_rotation = 0.0
+		--in coordsys world realRootHelper.rotation.y_rotation = 0.0
+		--in coordsys world realRootHelper.rotation.z_rotation = 0.0
+		--realRootHelper.transform = matrix3 1
 
-	local v3DCharFacingFinal = (in coordsys world realRootFacingHelperYMin.position) - (in coordsys world realRootFacingHelper.position)
-	
-	local newBBofBB= nodeLocalBoundingBox fullBB
-	local facingVectorLength = (length(newBBofBB[2] - newBBofBB[1]))*0.5
-	
-	v3DCharFacingFinal = (v3DCharFacingFinal / (length v3DCharFacingFinal)) * facingVectorLength
-	
-	local facingBoundingBox = copy fullBB
-	facingBoundingBox.name =  sHier[1].name + " Hierarchy Facing Vector"
-	in coordsys world facingBoundingBox.scale = [0.05,0.05,0.05]
-	in coordsys world facingBoundingBox.position = realRootFacingHelper.position + v3DCharFacingFinal
-	facingBoundingBox.parent = fullBB
-	
-	--local v3DCharFacingFinal = Vector3D FacialVectorX FacialVectorY FacialVectorZ
-	
-	delete realRootFacingHelper
-	delete realRootFacingHelperXMin
-	delete realRootFacingHelperXMax
-	delete realRootFacingHelperYMin
-	delete realRootFacingHelperYMax
-	delete realRootFacingHelperZMin
-	delete realRootFacingHelperZMax
-	--delete facingBoundingBox
-	
-	
-	return v3DCharFacingFinal
+		realRootHelper.rotation = eulerangles 0 0 0
+		
+		format "Test Pelvis Hierarchy successfully moved to the zero position and rotation\n"
+		
+		local rRCH1Length = length (realRootHChild1.position - realRootHelper.position)
+		local rRCH2Length = length (realRootHChild2.position - realRootHelper.position)
+		local rRCH3Length = length (realRootHChild3.position - realRootHelper.position)
+		format "% length: %\n" realRootHChild1.name rRCH1Length
+		format "% length: %\n" realRootHChild2.name rRCH2Length
+		format "% length: %\n" realRootHChild3.name rRCH3Length
+		
+		local minLengthDiffAxis = 0 -- smaller diff is between L1 and L2
+		local minLengthDiff = sqrt ((rRCH1Length - rRCH2Length)^2)
+		local minLengthDiff2 = sqrt ((rRCH1Length - rRCH3Length)^2)
+		if minLengthDiff > minLengthDiff2 do
+		(
+			minLengthDiff = minLengthDiff2
+			minLengthDiffAxis = 1 -- smaller diff is between L1 and L3
+		)
+		minLengthDiff2 = sqrt ((rRCH2Length - rRCH3Length)^2)
+		if minLengthDiff > minLengthDiff2 do
+		(
+			minLengthDiff = minLengthDiff2
+			minLengthDiffAxis = 2 -- smaller diff is between L2 and L3, otherwise between L1 and L2
+		)
+		local xAxisBone1
+		local xAxisBone2
+		local zAxisBone1
+		local zAxisBone2 = realRootHelper
+		
+		if minLengthDiffAxis == 0 then
+		(
+			format "Smaller diff is between % and %: %\n" realRootHChild1.name realRootHChild2.name minLengthDiff
+			xAxisBone1 = realRootHChild1
+			xAxisBone2 = realRootHChild2
+			zAxisBone1 = realRootHChild3
+			if realRootHChild3.children.count > 0 do zAxisBone2 = realRootHChild3.children[1]
+			realCharThigh = realCharRoot.children[1]
+			format "Real Thigh is: %\n" realCharThigh.name
+		)
+		if minLengthDiffAxis == 1 then
+		(
+			format "Smaller diff is between % and %: %\n" realRootHChild1.name realRootHChild3.name minLengthDiff
+			xAxisBone1 = realRootHChild1
+			xAxisBone2 = realRootHChild3
+			zAxisBone1 = realRootHChild2
+			if realRootHChild2.children.count > 0 do zAxisBone2 = realRootHChild2.children[1]
+			realCharThigh = realCharRoot.children[1]
+			format "Real Thigh is: %\n" realCharThigh.name
+		)
+		if minLengthDiffAxis == 2 then
+		(
+			format "Smaller diff is between % and %: %\n" realRootHChild2.name realRootHChild3.name minLengthDiff
+			xAxisBone1 = realRootHChild2
+			xAxisBone2 = realRootHChild3
+			zAxisBone1 = realRootHChild1
+			if realRootHChild1.children.count > 0 do zAxisBone2 = realRootHChild1.children[1]
+			realCharThigh = realCharRoot.children[2]
+			format "Real Thigh is: %\n" realCharThigh.name
+		)
+		
+		local xAxisFindXDiffAxis = 0 -- bigger diff is X axis
+		local xAxisFindXDiff = sqrt ((xAxisBone1.position.x - xAxisBone2.position.x)^2)
+		local xAxisFindXDiff2 = sqrt ((xAxisBone1.position.y - xAxisBone2.position.y)^2)
+		if xAxisFindXDiff < xAxisFindXDiff2 do
+		(
+			xAxisFindXDiff = xAxisFindXDiff2
+			xAxisFindXDiffAxis = 1 -- bigger diff is Y axis
+		)
+		local xAxisFindXDiff2 = sqrt ((xAxisBone1.position.z - xAxisBone2.position.z)^2)
+		if xAxisFindXDiff < xAxisFindXDiff2 do
+		(
+			xAxisFindXDiff = xAxisFindXDiff2
+			xAxisFindXDiffAxis = 2 -- bigger diff is Z axis
+		)
+		
+		local xAxisFinalAxisHelper = point size:0.1
+		xAxisFinalAxisHelper.name = realCharRoot.name + " X Axis Helper"
+		
+		if xAxisFindXDiffAxis == 0 then
+		(
+			format "bigger X diff is X axis: %\n" xAxisFindXDiff
+			in coordsys world xAxisFinalAxisHelper.position = [1.0,0.0,0.0]
+		)
+		else if xAxisFindXDiffAxis == 1 then
+		(
+			format "bigger X diff is Y axis: %\n" xAxisFindXDiff
+			in coordsys world xAxisFinalAxisHelper.position = [0.0,1.0,0.0]
+		)
+		else --if xAxisFindXDiffAxis == 2 then
+		(
+			format "bigger X diff is Z axis: %\n" xAxisFindXDiff
+			in coordsys world xAxisFinalAxisHelper.position = [0.0,0.0,1.0]
+		)
+		
+		
+		local zAxisFindZDiffAxis = 0 -- bigger diff is X axis
+		local zAxisFindZDiff = sqrt ((zAxisBone1.position.x - zAxisBone2.position.x)^2)
+		local zAxisFindZDiff2 = sqrt ((zAxisBone1.position.y - zAxisBone2.position.y)^2)
+		if zAxisFindZDiff < zAxisFindZDiff2 do
+		(
+			zAxisFindZDiff = zAxisFindZDiff2
+			zAxisFindZDiffAxis = 1 -- bigger diff is Y axis
+		)
+		local zAxisFindZDiff2 = sqrt ((zAxisBone1.position.z - zAxisBone2.position.z)^2)
+		if zAxisFindZDiff < zAxisFindZDiff2 do
+		(
+			zAxisFindZDiff = zAxisFindZDiff2
+			zAxisFindZDiffAxis = 2 -- bigger diff is Z axis
+		)
+		
+		local zAxisFinalAxisHelper = point size:0.1
+		zAxisFinalAxisHelper.name = realCharRoot.name + " Z Axis Helper"
+		
+		if zAxisFindZDiffAxis == 0 then
+		(
+			format "bigger Z diff is X axis: %\n" zAxisFindZDiff
+			in coordsys world zAxisFinalAxisHelper.position = [1.0,0.0,0.0]
+		)
+		else if zAxisFindZDiffAxis == 1 then
+		(
+			format "bigger Z diff is Y axis: %\n" zAxisFindZDiff
+			in coordsys world zAxisFinalAxisHelper.position = [0.0,1.0,0.0]
+		)
+		else --if zAxisFindZDiffAxis == 2 then
+		(
+			format "bigger Z diff is Z axis: %\n" zAxisFindZDiff
+			in coordsys world zAxisFinalAxisHelper.position = [0.0,0.0,1.0]
+		)
+		
+		local yAxisFinalAxisHelper = point size:0.1
+		yAxisFinalAxisHelper.name = realCharRoot.name + " Y Axis Helper"
+		local yAxisFinalAxis2Helper = point size:0.1
+		yAxisFinalAxis2Helper.name = realCharRoot.name + " Y Axis2 Helper"
+		local yAxisFindYDiffAxis = xAxisFindXDiffAxis + zAxisFindZDiffAxis
+		if yAxisFindYDiffAxis == 3 then -- 1 + 2
+		(
+			format "Y is X axis\n"
+			in coordsys world yAxisFinalAxisHelper.position = [1.0,0.0,0.0]
+			in coordsys world yAxisFinalAxis2Helper.position = [-1.0,0.0,0.0]
+		)
+		else if yAxisFindYDiffAxis == 2 then -- 0 + 2
+		(
+			format "Y is Y axis\n"
+			in coordsys world yAxisFinalAxisHelper.position = [0.0,1.0,0.0]
+			in coordsys world yAxisFinalAxis2Helper.position = [0.0,-1.0,0.0]
+		)
+		else --if yAxisFindYDiffAxis == 1 then -- 0 + 1
+		(
+			format "Y is Z axis\n"
+			in coordsys world yAxisFinalAxisHelper.position = [0.0,0.0,1.0]
+			in coordsys world yAxisFinalAxis2Helper.position = [0.0,0.0,-1.0]
+		)
+		
+		xAxisFinalAxisHelper.parent = realRootHelper
+		yAxisFinalAxisHelper.parent = realRootHelper
+		yAxisFinalAxis2Helper.parent = realRootHelper
+		zAxisFinalAxisHelper.parent = realRootHelper
+		
+		if realRootHChild1Child != undefined do delete realRootHChild1Child
+		delete realRootHChild1
+		if realRootHChild2Child != undefined do delete realRootHChild2Child
+		delete realRootHChild2
+		if realRootHChild3Child != undefined do delete realRootHChild3Child
+		delete realRootHChild3
+		
+		in coordsys world realRootHelper.transform = in coordsys world realCharRoot.transform
+		
+		local realFinalToe = SE_AAH_GetFinalBone realCharThigh
+		format "Final Toe is: %\n" realFinalToe.name
+		format "Final Toe parent is: %\n" realFinalToe.parent.name
+		
+		local realFinalToeAxisHelper = point size:0.1
+		realFinalToeAxisHelper.position = (realFinalToe.transform.position - realFinalToe.parent.transform.position)*100 + realFinalToe.parent.transform.position
+		
+		local yAxisFinalLocalAxisHelper = point size:0.1
+		yAxisFinalLocalAxisHelper.name = realCharRoot.name + " Local Y Axis Helper"
+		
+		local rFTYAxisLength = length (realFinalToeAxisHelper.position - yAxisFinalAxisHelper.position)
+		local rFTYAxis2Length = length (realFinalToeAxisHelper.position - yAxisFinalAxis2Helper.position)
+		if rFTYAxisLength > rFTYAxis2Length then
+		(
+			yAxisFinalLocalAxisHelper.position = yAxisFinalAxis2Helper.position
+			format "% Local Y Axis is: %\n" realCharRoot.name yAxisFinalAxis2Helper.name
+		)
+		else
+		(
+			yAxisFinalLocalAxisHelper.position = yAxisFinalAxisHelper.position
+			format "% Local Y Axis is: %\n" realCharRoot.name yAxisFinalAxisHelper.name
+		)
+		yAxisFinalLocalAxisHelper.parent = realRootHelper
+		
+		delete realFinalToeAxisHelper
+		delete yAxisFinalAxisHelper
+		delete yAxisFinalAxis2Helper
+		delete xAxisFinalAxisHelper
+		delete zAxisFinalAxisHelper
+		--select realRootHelper
+		
+		local v3DCharFacingFinal = (in coordsys world yAxisFinalLocalAxisHelper.position) - (in coordsys world realRootHelper.position)
+		
+		local newBBofBB= nodeLocalBoundingBox fullBB
+		local facingVectorLength = (length(newBBofBB[2] - newBBofBB[1]))*0.5
+		
+		v3DCharFacingFinal = (v3DCharFacingFinal / (length v3DCharFacingFinal)) * facingVectorLength
+		
+		local facingBoundingBox = copy fullBB
+		facingBoundingBox.name =  sHier[1].name + " Hierarchy Facing Vector"
+		in coordsys world facingBoundingBox.scale = [0.05,0.05,0.05]
+		in coordsys world facingBoundingBox.position = realRootHelper.position + v3DCharFacingFinal
+		facingBoundingBox.parent = fullBB
+		
+		--local v3DCharFacingFinal = Vector3D FacialVectorX FacialVectorY FacialVectorZ
+		
+		delete yAxisFinalLocalAxisHelper
+		delete realRootHelper
+		--delete facingBoundingBox
+		
+		--v3DCharFacingFinal = [0.0, -1.0, 0.0] -- TEMP DECISION!!!
+		
+		return v3DCharFacingFinal
+	)
+	else
+	(
+		return [0.0,0.0,1.0] -- up-oriented for non-character objects
+	)
 )
 
-fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTrigger = -- works only when BoneIndexes are calculated properly!
+fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTrigger transferObjectsTrigger = -- works only when BoneIndexes are calculated properly!
 (
 	local clonedH = #()
 	if sHierDontReplaceBones == true then sHierTempCloneRoot = copy sHierCurrentOne[1]
@@ -712,34 +924,42 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 			if sHierCurrentID > 0 do
 			(
 				sHierParentID = getUserProp sHierMember.parent "BoneIndex"
-				if sHierDontReplaceBones == true then sHierTempCloneMember = copy sHierMember
-				else
-				(
-					sHierTempCloneMember = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue --bone pos: [0.0,0.0,0.0] wirecolor:blue
-					if cloneTransformTrigger then sHierTempCloneMember.transform = sHierMember.transform
-					else sHierTempCloneMember.position = sHierMember.position
-					--in coordsys world sHierTempCloneMember.position.x = in coordsys world sHierMember.position.x
-					--in coordsys world sHierTempCloneMember.position.y = in coordsys world sHierMember.position.y
-					--in coordsys world sHierTempCloneMember.position.z = in coordsys world sHierMember.position.z
-					--if cloneTransformTrigger do in coordsys world sHierTempCloneMember.rotation = in coordsys world sHierMember.rotation
-					/*
-					ResetScale sHierTempCloneMember -- mapped method
-					in coordsys world sHierTempCloneMember.scale = [1,1,1]
-					local objTm= in coordsys parent sHierTempCloneMember.transform
-					local objTmX=normalize objTm.row1
-					local objTmY=normalize objTm.row2
-					local objTmZ=normalize (cross objTmX objTmY) --Rebuild the Z to orthogonalize the matrix.
-					in coordsys parent sHierTempCloneMember.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
-					*/
-					
-					
-				)
-				sHierTempCloneMember.name = sHierMember.name
-				setUserPropBuffer sHierTempCloneMember (getUserPropBuffer sHierMember)
-				sHierTempCloneMember.wirecolor = sHierMember.wirecolor
-				--sHierTempCloneMember.baseobject = nrtbnTempDummy
-				if sHierDontReplaceBones == false do sHierTempCloneMember.showLinks = true
-				--sHierTempCloneMember.showLinksOnly = true
+				--if transferObjectsTrigger == false or ClassOf sHierMember == point or ClassOf sHierMember == bone or ClassOf sHierMember == dummy then
+				--(
+					if sHierDontReplaceBones == true then sHierTempCloneMember = copy sHierMember
+					else
+					(
+						sHierTempCloneMember = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue --bone pos: [0.0,0.0,0.0] wirecolor:blue
+						if cloneTransformTrigger then sHierTempCloneMember.transform = sHierMember.transform
+						else sHierTempCloneMember.position = sHierMember.position
+						--in coordsys world sHierTempCloneMember.position.x = in coordsys world sHierMember.position.x
+						--in coordsys world sHierTempCloneMember.position.y = in coordsys world sHierMember.position.y
+						--in coordsys world sHierTempCloneMember.position.z = in coordsys world sHierMember.position.z
+						--if cloneTransformTrigger do in coordsys world sHierTempCloneMember.rotation = in coordsys world sHierMember.rotation
+						/*
+						ResetScale sHierTempCloneMember -- mapped method
+						in coordsys world sHierTempCloneMember.scale = [1,1,1]
+						local objTm= in coordsys parent sHierTempCloneMember.transform
+						local objTmX=normalize objTm.row1
+						local objTmY=normalize objTm.row2
+						local objTmZ=normalize (cross objTmX objTmY) --Rebuild the Z to orthogonalize the matrix.
+						in coordsys parent sHierTempCloneMember.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
+						*/
+						
+						
+					)
+					sHierTempCloneMember.name = sHierMember.name
+					setUserPropBuffer sHierTempCloneMember (getUserPropBuffer sHierMember)
+					sHierTempCloneMember.wirecolor = sHierMember.wirecolor
+					--sHierTempCloneMember.baseobject = nrtbnTempDummy
+					if sHierDontReplaceBones == false do sHierTempCloneMember.showLinks = true
+					--sHierTempCloneMember.showLinksOnly = true
+				--)
+				--else sHierTempCloneMember = copy sHierMember --sHierTempCloneMember = sHierMember
+				--if transferObjectsTrigger == true and ClassOf sHierMember != point and ClassOf sHierMember != bone and ClassOf sHierMember != dummy do
+				--(
+					--sHierMember.layer.addnode sHNode
+				--)
 				for sHierTempCloneMemberParent in clonedH do
 				(
 					if getUserProp sHierTempCloneMemberParent "BoneIndex" == sHierParentID do sHierTempCloneMember.parent = sHierTempCloneMemberParent
@@ -779,67 +999,15 @@ fn SE_AAH_CalculateBonesRotations sHierCurrentOne =
 			--sHierBone
 			if firstChild != undefined then
 			(
-				in coordsys world sHierBone.rotation.x_rotation = 0.0
-				in coordsys world sHierBone.rotation.y_rotation = 0.0
-				in coordsys world sHierBone.rotation.z_rotation = 0.0
-				local ikRotHelperX = point size:0.1
-				--ikRotHelperX.box = true
-				--ikRotHelperX.wirecolor = (color 0 0 255)
-				in coordsys world ikRotHelperX.position.x = in coordsys world sHierBone.position.x+1
-				in coordsys world ikRotHelperX.position.y = in coordsys world sHierBone.position.y
-				in coordsys world ikRotHelperX.position.z = in coordsys world sHierBone.position.z
-				ikRotHelperX.parent = sHierBone
-				local ikRotHelperY = point size:0.1
-				--ikRotHelperY.box = true
-				--ikRotHelperY.wirecolor = (color 0 0 255)
-				in coordsys world ikRotHelperY.position.x = in coordsys world sHierBone.position.x
-				in coordsys world ikRotHelperY.position.y = in coordsys world sHierBone.position.y+1
-				in coordsys world ikRotHelperY.position.z = in coordsys world sHierBone.position.z
-				ikRotHelperY.parent = sHierBone
-				local ikRotation = IKSys.ikChain sHierBone ikRotHelperX "IKHISolver"
-				ikRotation.transform.controller.posThresh = 0.0--01
-				ikRotation.transform.controller.rotThresh = 0.0--01
-				ikRotation.transform.controller.iterations = 1000
-				--ikRotation.transform.controller.goalsize = 0.1
-				--ikRotation.name = "IK_" +s.name + " Chain"
-				--ikRotation.wirecolor = (color 255 0 0)
-				--AAHHelperLayer.addnode ikRotation
+				local bRotHelperY = BoneSys.createBone (in coordsys world sHierBone.transform.position) (in coordsys world firstChild.transform.position) v3DCharFacing -- actually, it's XZ rotation helper, but then we'll rotate it by X-axis and it will be XY rotation helper
 				
+				in coordsys world sHierBone.rotation.x_rotation = in coordsys world bRotHelperY.rotation.x_rotation
+				in coordsys world sHierBone.rotation.y_rotation = in coordsys world bRotHelperY.rotation.y_rotation
+				in coordsys world sHierBone.rotation.z_rotation = in coordsys world bRotHelperY.rotation.z_rotation
 				
-				--local p2length = length (p2.position - p.position)
-				--local newjointhelperVector = p2.position - (p2.position - s.position) / (length (p2.position - s.position)) * p2length
-				--newjointhelper.position = newjointhelperVector - (newjointhelperVector - p.position) / (length (newjointhelperVector - p.position)) * p2length
-				--
-				--else newjointhelper.position = p.position
+				delete bRotHelperY
 				
-				
-				
-				--+v3DCharFacing.x
-				
-				--ikRotation.transform.controller.VHTarget = ikRotHelperY
-				
-				
-				in coordsys world ikRotation.position.x = in coordsys world firstChild.position.x
-				in coordsys world ikRotation.position.y = in coordsys world firstChild.position.y
-				in coordsys world ikRotation.position.z = in coordsys world firstChild.position.z
-				
-				/*
-				ikRotation.transform.controller.endJoint = ikRotHelperY
-				
-				in coordsys world ikRotation.position.x = in coordsys world sHierBone.position.x + v3DCharFacing.x
-				in coordsys world ikRotation.position.y = in coordsys world sHierBone.position.y + v3DCharFacing.y
-				in coordsys world ikRotation.position.z = in coordsys world sHierBone.position.z + v3DCharFacing.z
-				
-				ikRotation.transform.controller.endJoint = ikRotHelperX
-				
-				in coordsys world ikRotation.position.x = in coordsys world firstChild.position.x
-				in coordsys world ikRotation.position.y = in coordsys world firstChild.position.y
-				in coordsys world ikRotation.position.z = in coordsys world firstChild.position.z
-				*/ 
-				
-				delete ikRotation
-				delete ikRotHelperX
-				delete ikRotHelperY
+				in coordsys world sHierBone.transform = in coordsys world ( (rotateXmatrix 90) * sHierBone.transform) -- now Y-axis is pointing to the actual Y-axis of the character (and X-axis - to the children bone)
 			)
 			else
 			(
@@ -894,14 +1062,18 @@ fn SE_AAH_CreateLayerForHierarchy sHier sHierLayerName =
 	return cHNewLayer
 )
 
-fn SE_AAH_TransferAnimation sHier sHierCloneArray =
+fn SE_AAH_TransferAnimation sHier sHierCloneArray transferObjectsTrigger =
 (
 	SE_AAH_UpdateAnimRangeStartAndEnd sHier 1 true true true 0.0 100.0 false --get max anim range for the all hierarchy
 	local tsAnimBkInterval = 1.0
+	local clonedHDeletedNodes = #()
 	if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 	(
 		local AdoptRangeKeysCount = (((ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe) as float)/TicksPerFrame) as integer
-		local sHierCloneTempArray = SE_AAH_CloneHierarchy sHierCloneArray false true -- make a clone of the hierarchy with array of new helpers and copypasted rotations
+		if ACAnimRangeEndKeyframe > ACAnimRangeStartKeyframe then animationRange = interval ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
+		else animationRange = interval 0.0 100.0
+		local sHierCloneTempArray = SE_AAH_CloneHierarchy sHierCloneArray false true false -- make a clone of the hierarchy with array of new helpers and copypasted rotations
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 		for sHNode in sHier do
 		(
 			local sHNodeIndex = getUserProp sHNode "BoneIndex"
@@ -920,121 +1092,39 @@ fn SE_AAH_TransferAnimation sHier sHierCloneArray =
 				(
 					with Animate on
 					(
-						
-						for i = 0 to AdoptRangeKeysCount do
+						if transferObjectsTrigger == false or ClassOf sHNode == point or ClassOf sHNode == bone or ClassOf sHNode == dummy then
 						(
-							--if (ACAnimRangeStartKeyframe + (i * tsAnimBkInterval)) == 0.0f do isThereAZeroKeyAtAllpos = true
-							at time (ACAnimRangeStartKeyframe + (i * tsAnimBkInterval))
+							for i = 0 to AdoptRangeKeysCount do
 							(
-								in coordsys world sHCANode.transform = in coordsys world currentTempNode.transform
-							)
-						)
-						
-						
-						/*
-						--Start of current object animation baking to temp helper
-						if sHNode.position.controller.keys.count > 0 do 
-						(
-							local pgbCount = 0
-							local pgbCountTotal = sHNode.position.controller.keys.count
-							Process_Rollout.lbl_PrcssAAH.text = "Bk adopt pos: " + sHNode.name
-							for i = 1 to sHNode.position.controller.keys.count do
-							(
-								--if sHNode.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
-								at time sHNode.position.controller.keys[i].time
+								--if (ACAnimRangeStartKeyframe + (i * tsAnimBkInterval)) == 0.0f do isThereAZeroKeyAtAllpos = true
+								at time (ACAnimRangeStartKeyframe + (i * tsAnimBkInterval))
 								(
-									sHCANode.transform = currentTempNode.transform
-									--in coordsys world sHCANode.position.x = in coordsys world currentTempNode.position.x
-									--in coordsys world sHCANode.position.y = in coordsys world currentTempNode.position.y
-									--in coordsys world sHCANode.position.z = in coordsys world currentTempNode.position.z
-									pgbCount = pgbCount + 1
-									Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									in coordsys world sHCANode.transform = in coordsys world currentTempNode.transform
 								)
 							)
-						)
-						Process_Rollout.lbl_PrcssAAH.text = "Bk adopt pos (Ok!): " + sHNode.name
-						Process_Rollout.prgb_AAH.value = 0
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						if sHNode.target == undefined then
-						(
-							if sHNode.rotation.controller.keys.count > 0 do
-							(
-								local pgbCount = 0
-								local pgbCountTotal = sHNode.rotation.controller.keys.count
-								Process_Rollout.lbl_PrcssAAH.text = "Bk adopt rot: " + sHNode.name
-								for i = 1 to sHNode.rotation.controller.keys.count do
-								(
-									--if sHNode.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-									at time sHNode.rotation.controller.keys[i].time
-									(
-										--sHCANode.transform = currentTempNode.transform
-										
-										--in coordsys world sHCANode.rotation.controller.value = in coordsys world currentTempNode.rotation.controller.value
-										in coordsys world sHCANode.rotation = in coordsys world currentTempNode.rotation
-										
-										--in coordsys world sHCANode.rotation.controller.value = currentTempNode.transform as quat
-										--in coordsys world sHCANode.rotation.controller.value = in coordsys world currentTempNode.transform as quat
-										pgbCount = pgbCount + 1
-										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-									)
-								)
-							)
-							Process_Rollout.lbl_PrcssAAH.text = "Bk adopt rot (Ok!): " + sHNode.name
-							Process_Rollout.prgb_AAH.value = 0
-							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 						)
 						else
 						(
-							if sHNode.controller.roll_angle.controller.keys.count > 0 do
+							currentTempNode.parent = undefined
+							for i = 0 to AdoptRangeKeysCount do
 							(
-								local pgbCount = 0
-								local pgbCountTotal = sHNode.controller.roll_angle.controller.keys.count
-								Process_Rollout.lbl_PrcssAAH.text = "Bk adopt roll: " + sHNode.name
-								for i = 1 to sHNode.controller.roll_angle.controller.keys.count do
+								at time (ACAnimRangeStartKeyframe + (i * tsAnimBkInterval))
 								(
-									--if sHNode.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
-									at time sHNode.controller.roll_angle.controller.keys[i].time
-									(
-										--sHCANode.transform = currentTempNode.transform
-										--in coordsys world sHCANode.rotation.controller.value = in coordsys world currentTempNode.rotation.controller.value
-										
-										in coordsys world sHCANode.transform = in coordsys world currentTempNode.transform
-										pgbCount = pgbCount + 1
-										Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
-									)
+									in coordsys world currentTempNode.transform = in coordsys world sHNode.transform
 								)
 							)
-							Process_Rollout.lbl_PrcssAAH.text = "Bk adopt roll (Ok!): " + sHNode.name
-							Process_Rollout.prgb_AAH.value = 0
-							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						)
-						if sHNode.scale.controller.keys.count > 0 do
-						(
-							local pgbCount = 0
-							local pgbCountTotal = sHNode.scale.controller.keys.count
-							Process_Rollout.lbl_PrcssAAH.text = "Bk adopt scl: " + sHNode.name
-							for i = 1 to sHNode.scale.controller.keys.count do
+							sHNode.parent = undefined --sHCANode.parent
+							for i = 0 to AdoptRangeKeysCount do
 							(
-								--if sHNode.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
-								at time sHNode.scale.controller.keys[i].time
+								at time (ACAnimRangeStartKeyframe + (i * tsAnimBkInterval))
 								(
-									--sHCANode.transform = currentTempNode.transform
-									--in coordsys world sHCANode.rotation.controller.value = in coordsys world currentTempNode.rotation.controller.value
-									
-									in coordsys world sHCANode.scale.x = in coordsys world currentTempNode.scale.x
-									in coordsys world sHCANode.scale.y = in coordsys world currentTempNode.scale.y
-									in coordsys world sHCANode.scale.z = in coordsys world currentTempNode.scale.z
-									pgbCount = pgbCount + 1
-									Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
+									in coordsys world sHNode.transform = in coordsys world currentTempNode.transform
 								)
 							)
+							sHCANode.layer.addnode sHNode
+							append clonedHDeletedNodes sHCANode
+							--delete sHCANode
 						)
-						Process_Rollout.lbl_PrcssAAH.text = "Bk adopt scl (Ok!): " + sHNode.name
-						Process_Rollout.prgb_AAH.value = 0
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						*/
-						
-						
 						
 						
 						
@@ -1049,7 +1139,10 @@ fn SE_AAH_TransferAnimation sHier sHierCloneArray =
 		
 		
 		--AAHHelperLayer.addnode ikRotation
-	
+		if clonedHDeletedNodes.count > 0 do
+		(
+			for clonedHDNode in clonedHDeletedNodes do delete clonedHDNode
+		)
 	
 	
 	
@@ -1202,7 +1295,7 @@ fn HasSkinModifier obj =
 	return skinModifierFound
 )
 
-fn GetSkinMeshes selectedBones =
+fn SE_AAH_GetSkinMeshes selectedBones =
 (
 	local relatedSkins = #()
 	local firstFoundBoneSkinId
@@ -1320,7 +1413,7 @@ fn GetSkinMeshes selectedBones =
 	return relatedSkins
 )
 
-fn MarkRelatedSkinBones selectedMesh =
+fn SE_AAH_MarkRelatedSkinBones selectedMesh =
 (
 	local shitFound = false
 	if getUserProp selectedMesh "SkinMeshNumber" == undefined or getUserProp selectedMesh "SkinMeshNumber" == -1 do
@@ -1374,6 +1467,146 @@ fn MarkRelatedSkinBones selectedMesh =
 	--return shitFound
 )
 
+fn SE_AAH_MarkAllSkinsAndBonesInScene =
+(
+	local littleShit = point size:0.1
+	local littleShittyArray = #()
+	append littleShittyArray littleShit
+	SE_AAH_GetSkinMeshes littleShittyArray
+	delete littleShit
+)
+
+fn SE_AAH_GetRelatedSkinMeshes selectedMesh =
+(
+	local relatedSkins = #()
+	if getUserProp selectedMesh "SkinMeshNumber" != undefined and getUserProp selectedMesh "SkinMeshNumber" != -1 do
+	(
+		local currentSkinMeshNumber = getUserProp selectedMesh "SkinMeshNumber"
+		for obj in geometry do
+		(
+			if (HasSkinModifier obj) do
+			(
+				if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == currentSkinMeshNumber do append relatedSkins obj
+			)
+		)
+	)
+	return relatedSkins
+)
+
+fn SE_AAH_GetRelatedSkinBones selectedMesh =
+(
+	local relatedBones = #()
+	if getUserProp selectedMesh "SkinMeshNumber" != undefined and getUserProp selectedMesh "SkinMeshNumber" != -1 do
+	(
+		local currentSkinMeshNumber = getUserProp selectedMesh "SkinMeshNumber"
+		for obj in objects do
+		(
+			if (HasSkinModifier obj == false) do
+			(
+				if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == currentSkinMeshNumber do append relatedBones obj
+			)
+		)
+	)
+	return relatedBones
+)
+
+fn SE_AAH_GetSkinMeshBones cMCMLMesh = --currentBonesTemp =
+(
+	local relatedBones = #()
+	local shitFound = false
+	
+	--local s_Array = selection as array
+	local skTryCatchNumberOfBones
+	max modify mode
+	for sk in cMCMLMesh.modifiers where iskindof sk Skin while shitFound == false do
+	(
+		modpanel.setcurrentobject sk
+		local sknodes = for n in (refs.dependson sk) where isvalidnode n collect n
+		try (skTryCatchNumberOfBones = skinops.getnumberbones sk) catch () --some skinned meshes may cause bugs so that's why it's try-catch
+		format "%: skTryCatchNumberOfBones: %, sknodes: %\n" cMCMLMesh.name skTryCatchNumberOfBones sknodes.count
+		
+		if skTryCatchNumberOfBones != undefined do
+		(
+			for i=1 to skTryCatchNumberOfBones while shitFound == false do 
+			(
+				sknname = skinops.getbonename sk i 0
+				for k = 1 to sknodes.count while shitFound == false do
+				(
+					if shitFound == false and stricmp sknname sknodes[k].name == 0 do
+					(
+						for obj in objects while shitFound == false do
+						(
+							if shitFound == false and sknodes[k] == obj do
+							(
+								append relatedBones obj
+								--format "%: Found Bone: %\n" cMCMLMesh.name obj.name
+								--shitFound = true
+							)
+						)
+					)
+				)
+			)
+		)
+	)
+	--clearselection()
+	--for obj in s_Array do
+	--(
+	--	selectmore obj
+	--)
+	
+	return relatedBones
+)
+
+fn SE_AAH_GetSkinMeshClonedBones skinMeshBonesList currentBonesCloneArray =
+(
+	local relatedClonedBones = #()
+	for currentBCloneANode in currentBonesCloneArray do
+	(
+		if (getUserProp currentBCloneANode "BoneIndex") != undefined and (getUserProp currentBCloneANode "BoneIndex") != -1 do
+		(
+			local currentCBBoneIndex = (getUserProp currentBCloneANode "BoneIndex")
+			for skinMBLNode in skinMeshBonesList do
+			(
+				if (getUserProp skinMBLNode "BoneIndex") != undefined and (getUserProp skinMBLNode "BoneIndex") == currentCBBoneIndex do
+				(
+					append relatedClonedBones currentBCloneANode
+				)
+			)
+		)
+	)
+	return relatedClonedBones
+)
+
+fn SE_AAH_GetSkinMeshLastLeftClonedBones currentBonesCloneArray skinMeshCloneBonesList =
+(
+	local relatedLastLeftClonedBones = #()
+	local shitFound = false
+	for currentBCloneANode in currentBonesCloneArray do
+	(
+		if (getUserProp currentBCloneANode "BoneIndex") != undefined and (getUserProp currentBCloneANode "BoneIndex") != -1 do
+		(
+			local currentCBBoneIndex = (getUserProp currentBCloneANode "BoneIndex")
+			shitFound = false
+			for skinMBLNode in skinMeshCloneBonesList do
+			(
+				if (getUserProp skinMBLNode "BoneIndex") != undefined and (getUserProp skinMBLNode "BoneIndex") == currentCBBoneIndex do
+				(
+					shitFound = true
+				)
+			)
+			if shitFound == false do append relatedLastLeftClonedBones currentBCloneANode
+		)
+	)
+	return relatedLastLeftClonedBones
+)
+
+fn SE_AAH_CreateWeightMesh cMCMLMesh =
+(
+	skinUtils.ExtractSkinData cMCMLMesh
+	local skinWeightMesh = getNodeByName ("SkinData_" + cMCMLMesh.name)
+	return skinWeightMesh
+)
+
 fn RoundUp2 RValue RAccValue =
 (
 	return ((ceil (RValue / RAccValue)) * RAccValue)
@@ -1404,6 +1637,26 @@ fn copyPasteTransform pickedTm TargetTm pos rot scl =
 		pickedTm.row3 = (normalize pickedTm.row3) * length TargetTm.row3
 	)
 	return pickedTm
+)
+
+fn SE_AAH_ShowBoneIDsInViewport =
+(
+	if DrawBoneIDsTrigger do
+	(
+		gw.setTransform(Matrix3 1) -- set active viewport’s graphics window transformation matrix to the world matrix
+		if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) do
+		(
+			local sHierBI = GetAllHierarchy selection[1] 0
+			for sHBINode in sHierBI do
+			(
+				local sHBINodeID = SE_AAH_GetSubID sHBINode
+				if sHBINodeID == -1 then gw.text sHBINode.pos ("-X-") color:red
+				else 	gw.text sHBINode.pos ("ID: " + (SE_AAH_GetSubID sHBINode) as string) color:orange
+			)
+		)
+		gw.enlargeUpdateRect #whole
+		gw.updateScreen()
+	)
 )
 
 /*********************************************************************************************************************************************************************/
@@ -1448,7 +1701,7 @@ rollout Process_Rollout "Process Info" width:132 height:30
 	on Process_Rollout open do
 	(
 		callbacks.addScript #selectionSetChanged "Process_Rollout.ProgressInfoStatusUpdate()" id:#se_processinfo
-		ProgressInfoStatusUpdate()
+		ProgressInfoStatusUpdate() 
 	)
 
 	on Process_Rollout close do
@@ -1488,21 +1741,26 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		button btn_CloneHierarchy "Whole" width:40 height:16 align:#left across:4 tooltip:"(Whole hierarchy)\nClones the hierarchy.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
 		button btn_CloneChildren "Pt" width:22 height:16 tooltip:"(Partial)\nClones the selected children bone and it's children hierarchy, if needed. Use this, if you want to clone a bodypart, like hand or foot.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
 		checkbox chkbx_DontReplaceBones "Og" checked:false tooltip:"(Original)\nIf checked, it will clone the bones with the same type of objects, like it was in the original. Otherwise will replace bones with helpers.\n\nThere're some bugs during cloning some systems like Biped or CAT, that's why it's disabled by default and recommended to activate ONLY if you know what you're doing."
-		checkbox chkbx_FullTransformCopy "FT" align:#right checked:true tooltip:"(Full Transform)\nIf checked, it will clone the bones' full transformation (positions, rotations and scale), like it was in the original. Otherwise will clone positions only.\n\nThere're some bugs during cloning some systems like Biped or CAT, that's why it's disabled by default and recommended to activate ONLY if you know what you're doing."
+		checkbox chkbx_FullTransformCopy "FT" align:#right checked:true tooltip:"(Full Transform)\nIf checked, it will clone the bones' full transformation (positions, rotations and scale), like it was in the original.\nOtherwise will clone positions only."
 	)
 	group "Bones' rotations"
 	(
-		button btn_CalcBonesRotations "Calc bones' rot" width:85 height:16 align:#left across:2 tooltip:"Automatically calculates bones' rotations in the whole hierarchy.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
-		button btn_CalcOneBoneRotations "One bone" width:60 height:16 align:#right tooltip:"Automatically calculates bone rotation in the selected bone.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
+		button btn_CalcBonesRotations "Calc bones' rot" width:85 height:16 align:#left across:2 tooltip:"Calculate bones' rotations.\n\nAutomatically calculates bones' rotations in the whole hierarchy to X axis.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
+		button btn_CalcOneBoneRotations "One bone" width:60 height:16 align:#right tooltip:"Automatically calculates bone rotation in the selected bone to X axis.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
 	)
 	group "Skeleton Adaptation"--"Extra tools"
 	(
 		--checkbutton setup "Setup" checked:true tooltip:"Opens setup panels"
 		--button theButton iconName:@"PolyTools\TransformTools\PB_CW" iconSize:[20,20]
 		--button theBorderlessButton2 "I am a button, too!" border:false
-		button btn_BonesAdaptationTool "Skel Adapt" across:2 height:16 align:#left tooltip:"Creates a clone of hierarchy, automatically calculates proper rotation values.\nCan transfer animation from the old hierarchy to the new one.\nAlso automatically calculates BoneIndex parameters for bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
-		checkbox chkbx_BATransferAnimation "with Anim" align:#right checked:false tooltip:"If checked, it will transfer animation from the old bone hierarchy to the new one."
-		button btn_TestHierarchy "Test hier" width:55 height:16 align:#right tooltip:"Test your bone hierarchy.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
+		button btn_BonesAdaptationTool "Skel Adapt" across:2 height:16 align:#left tooltip:"Skeleton adaptation.\n\nCreates a clone of hierarchy, automatically calculates proper rotation values.\nCan transfer animation from the old hierarchy to the new one.\nAlso automatically calculates BoneIndex parameters for bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
+		checkbox chkbx_BATransferAnimation "with Anim" align:#right checked:true tooltip:"If checked, it will transfer animation from the old bone hierarchy to the new one."
+		checkbox chkbx_BAResetScale "RS" across:4 align:#left checked:false tooltip:"Reset scale.\n\nIf checked, it will reset scale for all the bones to the default while skeleton adaptation.\n\nUse this if you have some scale problems while animation convertations from Maya or other programs."
+		checkbox chkbx_BATransferObjects "BO" checked:true tooltip:"Bake objects' animation.\n\nIf checked, it will bake linked objects' animation to the world position."
+		checkbox chkbx_BASaveOriginal "SO" checked:false tooltip:"Save original hierarchy.\n\nIf checked, it will save original bone hierarchy in hidden layer."
+		checkbox chkbx_BACleanModifiersList "CM" align:#right checked:true tooltip:"Clean modifiers list.\n\nIf checked, it will clean character's modifier list before adaptation.\n\nIt's important in most of the situations, that's why its checked by default. Uncheck ONLY if you KNOW what you're doing!"
+		button btn_SceneBonesAdaptationTool "Scene Adapt" across:2 height:16 align:#left tooltip:"Whole scene adaptation.\n\nDoes the same thing as the ''Skeleton adaptation'' above, but with all the characters in the scene, just in one click.\n\nCreates a clone of hierarchy for each character, automatically calculates proper rotation values.\nCan transfer animation from the old hierarchy to the new one.\nAlso automatically calculates BoneIndex parameters for bone hierarchy."
+		button btn_TestHierarchy "Test hier" width:55 height:16 align:#right tooltip:"Test your bone hierarchy to see its dimensions and direction axis.\n\nCreates a boundary box and the direction axis box (you can delete them later, if you don't need them).\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
 	)
 	
 	rollout ManualSubIDSetTool "Manual SubID Set Tool" width:300 height:400
@@ -1542,6 +1800,21 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		button btn_SetBSpine15 "Spine15" height:16 tooltip:"Set the Spine15 bone or analog."
 		button btn_SetBSpine16 "Spine16" height:16 tooltip:"Set the Spine16 bone or analog."
 		
+		
+		on ManualSubIDSetTool open do
+		(
+			--callbacks.addScript #selectionSetChanged "Rig_Tuner_Rollout.SubIDsAndFrameNames()" id:#se_rigtuner
+			--SubIDsAndFrameNames()
+			DrawBoneIDsTrigger = true
+			registerRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport -- thanks aleks926820 for the idea
+		)
+
+		on ManualSubIDSetTool close do
+		(
+			--callbacks.removeScripts id:#se_rigtuner
+			DrawBoneIDsTrigger = false
+			unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+		)
 		
 		
 		on btn_TestHierarchy2 pressed do
@@ -1709,13 +1982,13 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				btn_TestHierarchy.enabled = true
 				btn_CalcBonesRotations.enabled = true
 				btn_CalcOneBoneRotations.enabled = true
+				btn_BonesAdaptationTool.enabled = true
 				if selection.count == 1 then
 				(
 					spn_SubID.value = SE_AAH_GetSubID $
 					spn_SubID.enabled = true
 					btn_SubIDSet.enabled = true
 					btn_CreateChildB.enabled = true
-					
 				)
 				else
 				(
@@ -1723,6 +1996,14 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 					spn_SubID.enabled = false
 					btn_SubIDSet.enabled = false
 					btn_CreateChildB.enabled = false
+				)
+				if DrawBoneIDsTrigger then
+				(
+					registerRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport -- thanks aleks926820 for the idea
+				)
+				else
+				(
+					unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
 				)
 			)
 			else
@@ -1739,7 +2020,9 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				btn_TestHierarchy.enabled = false
 				btn_CalcBonesRotations.enabled = false
 				btn_CalcOneBoneRotations.enabled = false
+				btn_BonesAdaptationTool.enabled = false
 				
+				unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
 			)
 		)
 	)
@@ -1757,6 +2040,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 	on Rig_Tuner_Rollout close do
 	(
 		callbacks.removeScripts id:#se_rigtuner
+		unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
 	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
@@ -1913,7 +2197,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 			(
 				local sHier = GetAllHierarchy selection[1] 0
 				SE_AAH_SetBonesIndexesnTypes sHier
-				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHier chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state -- make a clone of the hierarchy with copypasted rotations
+				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHier chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state false -- make a clone of the hierarchy with copypasted rotations
 				local cHLayer = LayerManager.newLayer()
 				if sHierTempCloneArray[1] != undefined do
 				(	
@@ -1938,7 +2222,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				local sHier = GetAllHierarchy selection[1] 0
 				SE_AAH_SetBonesIndexesnTypes sHier
 				local sHierCh = GetChildrenHierarchy selection 0
-				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHierCh chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state -- make a clone of the hierarchy with copypasted rotations
+				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHierCh chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state false -- make a clone of the hierarchy with copypasted rotations
 				local cHLayer = LayerManager.newLayer()
 				if sHierTempCloneArray[1] != undefined do
 				(	
@@ -1973,7 +2257,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				
 				
 				--AAHHelperLayer.addnode boundingBox
-				--select boundingBox
+				select boundingBox
 			)
 			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
 		)
@@ -2000,55 +2284,672 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
 		)
 	)
-
-	on btn_BonesAdaptationTool pressed do
+	
+	on btn_CalcOneBoneRotations pressed do
 	(
 		if (queryBox "Have you selected any bone of hierarchy?" title:"WARNING") do
 		(
 			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 			(
-				ProcessUpdateFreezeTrigger = true
-				Process_Rollout.lbl_PrcssAAH.text = "Preparing for bones adaptation..."
-				Process_Rollout.prgb_AAH.value = 0
-				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-				
 				UpdateOrCreateAAHHelperLayer()
 				local sHier = GetAllHierarchy selection[1] 0
-				SE_AAH_SetBonesIndexesnTypes sHier
-				local sHierCloneArray = SE_AAH_CloneHierarchy sHier false false -- make a clone of the hierarchy with array of new helpers and new rotations
-				Process_Rollout.lbl_PrcssAAH.text = "Hierarchy clone: success!"
-				Process_Rollout.prgb_AAH.value = 30
-				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 				
-				local newLayerName
-				local oldBonesLayer = SE_AAH_GetUniqueHierarchyLayer sHier -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
-				if oldBonesLayer == -1 or oldBonesLayer == -2 then
+				local realCharRoot
+				for sHierBone in sHier do
 				(
-					oldBonesLayer = SE_AAH_CreateLayerForHierarchy sHier ("Bones " + sHier[1].name + " old layer")
-					newLayerName = ("Bones " + sHier[1].name + " clone layer")
+					if sHierBone.children.count > 2 and realCharRoot == undefined do realCharRoot = sHierBone
 				)
-				else newLayerName = (oldBonesLayer.name + " clone layer")
-				oldBonesLayer.isHidden = true
-				local cHLayer = SE_AAH_CreateLayerForHierarchy sHierCloneArray newLayerName
-				Process_Rollout.lbl_PrcssAAH.text = "Layers preparation: success!"
-				Process_Rollout.prgb_AAH.value = 60
-				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-				
-				SE_AAH_CalculateBonesRotations sHierCloneArray  
-				Process_Rollout.lbl_PrcssAAH.text = "New bone rotations: success!"
-				Process_Rollout.prgb_AAH.value = 90
-				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-				select sHierCloneArray[1]
-				
-				if chkbx_BATransferAnimation.state == true do SE_AAH_TransferAnimation sHier sHierCloneArray
+				if realCharRoot != undefined do
+				(
+					format "Real Root is %. Found children bones: %\n" realCharRoot.name realCharRoot.children.count
+					
+					local realCharThigh
+					
+					local realRootHelper = point size:0.1
+					realRootHelper.name = realCharRoot.name + " RRHelper"
+					in coordsys world realRootHelper.transform = in coordsys world realCharRoot.transform
+					
+					local realRootHChild1= point size:0.1
+					realRootHChild1.name = realCharRoot.children[1].name + " RRHelper1"
+					in coordsys world realRootHChild1.transform = in coordsys world realCharRoot.children[1].transform
+					realRootHChild1.parent = realRootHelper
+					if realCharRoot.children[1].children.count > 0 do
+					(
+						local realRootHChild1Child= point size:0.1
+						realRootHChild1Child.name = realCharRoot.children[1].children[1].name + " RRHelper1Child"
+						in coordsys world realRootHChild1Child.transform = in coordsys world realCharRoot.children[1].children[1].transform
+						realRootHChild1Child.parent = realRootHChild1
+					)
+					local realRootHChild2= point size:0.1
+					realRootHChild2.name = realCharRoot.children[2].name + " RRHelper2"
+					in coordsys world realRootHChild2.transform = in coordsys world realCharRoot.children[2].transform
+					realRootHChild2.parent = realRootHelper
+					if realCharRoot.children[2].children.count > 0 do
+					(
+						local realRootHChild2Child= point size:0.1
+						realRootHChild2Child.name = realCharRoot.children[2].children[1].name + " RRHelper2Child"
+						in coordsys world realRootHChild2Child.transform = in coordsys world realCharRoot.children[2].children[1].transform
+						realRootHChild2Child.parent = realRootHChild2
+					)
+					local realRootHChild3= point size:0.1
+					realRootHChild3.name = realCharRoot.children[3].name + " RRHelper3"
+					in coordsys world realRootHChild3.transform = in coordsys world realCharRoot.children[3].transform
+					realRootHChild3.parent = realRootHelper
+					if realCharRoot.children[3].children.count > 0 do
+					(
+						local realRootHChild3Child= point size:0.1
+						realRootHChild3Child.name = realCharRoot.children[3].children[1].name + " RRHelper3Child"
+						in coordsys world realRootHChild3Child.transform = in coordsys world realCharRoot.children[3].children[1].transform
+						realRootHChild3Child.parent = realRootHChild3
+					)
+					
+					
+					in coordsys world realRootHelper.position = [0.0,0.0,0.0]
+					--in coordsys world realRootHelper.rotation = [0.0,0.0,0.0]
+					--in coordsys world realRootHelper.rotation.x_rotation = 0.0
+					--in coordsys world realRootHelper.rotation.y_rotation = 0.0
+					--in coordsys world realRootHelper.rotation.z_rotation = 0.0
+					--realRootHelper.transform = matrix3 1
 
-				
-				Process_Rollout.lbl_PrcssAAH.text = "Bone adaptation finished!"
-				Process_Rollout.prgb_AAH.value = 0
-				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-				ProcessUpdateFreezeTrigger = false
+					realRootHelper.rotation = eulerangles 0 0 0
+					
+					format "Test Pelvis Hierarchy successfully moved to the zero position and rotation\n"
+					
+					local rRCH1Length = length (realRootHChild1.position - realRootHelper.position)
+					local rRCH2Length = length (realRootHChild2.position - realRootHelper.position)
+					local rRCH3Length = length (realRootHChild3.position - realRootHelper.position)
+					format "% length: %\n" realRootHChild1.name rRCH1Length
+					format "% length: %\n" realRootHChild2.name rRCH2Length
+					format "% length: %\n" realRootHChild3.name rRCH3Length
+					
+					local minLengthDiffAxis = 0 -- smaller diff is between L1 and L2
+					local minLengthDiff = sqrt ((rRCH1Length - rRCH2Length)^2)
+					local minLengthDiff2 = sqrt ((rRCH1Length - rRCH3Length)^2)
+					if minLengthDiff > minLengthDiff2 do
+					(
+						minLengthDiff = minLengthDiff2
+						minLengthDiffAxis = 1 -- smaller diff is between L1 and L3
+					)
+					minLengthDiff2 = sqrt ((rRCH2Length - rRCH3Length)^2)
+					if minLengthDiff > minLengthDiff2 do
+					(
+						minLengthDiff = minLengthDiff2
+						minLengthDiffAxis = 2 -- smaller diff is between L2 and L3, otherwise between L1 and L2
+					)
+					local xAxisBone1
+					local xAxisBone2
+					local zAxisBone1
+					local zAxisBone2 = realRootHelper
+					
+					if minLengthDiffAxis == 0 then
+					(
+						format "Smaller diff is between % and %: %\n" realRootHChild1.name realRootHChild2.name minLengthDiff
+						xAxisBone1 = realRootHChild1
+						xAxisBone2 = realRootHChild2
+						zAxisBone1 = realRootHChild3
+						if realRootHChild3.children.count > 0 do zAxisBone2 = realRootHChild3.children[1]
+						realCharThigh = realCharRoot.children[1]
+						format "Real Thigh is: %\n" realCharThigh.name
+					)
+					if minLengthDiffAxis == 1 then
+					(
+						format "Smaller diff is between % and %: %\n" realRootHChild1.name realRootHChild3.name minLengthDiff
+						xAxisBone1 = realRootHChild1
+						xAxisBone2 = realRootHChild3
+						zAxisBone1 = realRootHChild2
+						if realRootHChild2.children.count > 0 do zAxisBone2 = realRootHChild2.children[1]
+						realCharThigh = realCharRoot.children[1]
+						format "Real Thigh is: %\n" realCharThigh.name
+					)
+					if minLengthDiffAxis == 2 then
+					(
+						format "Smaller diff is between % and %: %\n" realRootHChild2.name realRootHChild3.name minLengthDiff
+						xAxisBone1 = realRootHChild2
+						xAxisBone2 = realRootHChild3
+						zAxisBone1 = realRootHChild1
+						if realRootHChild1.children.count > 0 do zAxisBone2 = realRootHChild1.children[1]
+						realCharThigh = realCharRoot.children[2]
+						format "Real Thigh is: %\n" realCharThigh.name
+					)
+					
+					local xAxisFindXDiffAxis = 0 -- bigger diff is X axis
+					local xAxisFindXDiff = sqrt ((xAxisBone1.position.x - xAxisBone2.position.x)^2)
+					local xAxisFindXDiff2 = sqrt ((xAxisBone1.position.y - xAxisBone2.position.y)^2)
+					if xAxisFindXDiff < xAxisFindXDiff2 do
+					(
+						xAxisFindXDiff = xAxisFindXDiff2
+						xAxisFindXDiffAxis = 1 -- bigger diff is Y axis
+					)
+					local xAxisFindXDiff2 = sqrt ((xAxisBone1.position.z - xAxisBone2.position.z)^2)
+					if xAxisFindXDiff < xAxisFindXDiff2 do
+					(
+						xAxisFindXDiff = xAxisFindXDiff2
+						xAxisFindXDiffAxis = 2 -- bigger diff is Z axis
+					)
+					
+					local xAxisFinalAxisHelper = point size:0.1
+					xAxisFinalAxisHelper.name = realCharRoot.name + " X Axis Helper"
+					
+					if xAxisFindXDiffAxis == 0 then
+					(
+						format "bigger X diff is X axis: %\n" xAxisFindXDiff
+						in coordsys world xAxisFinalAxisHelper.position = [1.0,0.0,0.0]
+					)
+					else if xAxisFindXDiffAxis == 1 then
+					(
+						format "bigger X diff is Y axis: %\n" xAxisFindXDiff
+						in coordsys world xAxisFinalAxisHelper.position = [0.0,1.0,0.0]
+					)
+					else --if xAxisFindXDiffAxis == 2 then
+					(
+						format "bigger X diff is Z axis: %\n" xAxisFindXDiff
+						in coordsys world xAxisFinalAxisHelper.position = [0.0,0.0,1.0]
+					)
+					
+					
+					local zAxisFindZDiffAxis = 0 -- bigger diff is X axis
+					local zAxisFindZDiff = sqrt ((zAxisBone1.position.x - zAxisBone2.position.x)^2)
+					local zAxisFindZDiff2 = sqrt ((zAxisBone1.position.y - zAxisBone2.position.y)^2)
+					if zAxisFindZDiff < zAxisFindZDiff2 do
+					(
+						zAxisFindZDiff = zAxisFindZDiff2
+						zAxisFindZDiffAxis = 1 -- bigger diff is Y axis
+					)
+					local zAxisFindZDiff2 = sqrt ((zAxisBone1.position.z - zAxisBone2.position.z)^2)
+					if zAxisFindZDiff < zAxisFindZDiff2 do
+					(
+						zAxisFindZDiff = zAxisFindZDiff2
+						zAxisFindZDiffAxis = 2 -- bigger diff is Z axis
+					)
+					
+					local zAxisFinalAxisHelper = point size:0.1
+					zAxisFinalAxisHelper.name = realCharRoot.name + " Z Axis Helper"
+					
+					if zAxisFindZDiffAxis == 0 then
+					(
+						format "bigger Z diff is X axis: %\n" zAxisFindZDiff
+						in coordsys world zAxisFinalAxisHelper.position = [1.0,0.0,0.0]
+					)
+					else if zAxisFindZDiffAxis == 1 then
+					(
+						format "bigger Z diff is Y axis: %\n" zAxisFindZDiff
+						in coordsys world zAxisFinalAxisHelper.position = [0.0,1.0,0.0]
+					)
+					else --if zAxisFindZDiffAxis == 2 then
+					(
+						format "bigger Z diff is Z axis: %\n" zAxisFindZDiff
+						in coordsys world zAxisFinalAxisHelper.position = [0.0,0.0,1.0]
+					)
+					
+					local yAxisFinalAxisHelper = point size:0.1
+					yAxisFinalAxisHelper.name = realCharRoot.name + " Y Axis Helper"
+					local yAxisFinalAxis2Helper = point size:0.1
+					yAxisFinalAxis2Helper.name = realCharRoot.name + " Y Axis2 Helper"
+					local yAxisFindYDiffAxis = xAxisFindXDiffAxis + zAxisFindZDiffAxis
+					if yAxisFindYDiffAxis == 3 then -- 1 + 2
+					(
+						format "Y is X axis\n"
+						in coordsys world yAxisFinalAxisHelper.position = [1.0,0.0,0.0]
+						in coordsys world yAxisFinalAxis2Helper.position = [-1.0,0.0,0.0]
+					)
+					else if yAxisFindYDiffAxis == 2 then -- 0 + 2
+					(
+						format "Y is Y axis\n"
+						in coordsys world yAxisFinalAxisHelper.position = [0.0,1.0,0.0]
+						in coordsys world yAxisFinalAxis2Helper.position = [0.0,-1.0,0.0]
+					)
+					else --if yAxisFindYDiffAxis == 1 then -- 0 + 1
+					(
+						format "Y is Z axis\n"
+						in coordsys world yAxisFinalAxisHelper.position = [0.0,0.0,1.0]
+						in coordsys world yAxisFinalAxis2Helper.position = [0.0,0.0,-1.0]
+					)
+					
+					xAxisFinalAxisHelper.parent = realRootHelper
+					yAxisFinalAxisHelper.parent = realRootHelper
+					yAxisFinalAxis2Helper.parent = realRootHelper
+					zAxisFinalAxisHelper.parent = realRootHelper
+					
+					if realRootHChild1Child != undefined do delete realRootHChild1Child
+					delete realRootHChild1
+					if realRootHChild2Child != undefined do delete realRootHChild2Child
+					delete realRootHChild2
+					if realRootHChild3Child != undefined do delete realRootHChild3Child
+					delete realRootHChild3
+					
+					in coordsys world realRootHelper.transform = in coordsys world realCharRoot.transform
+					--in coordsys world realRootHelper.position = in coordsys world realCharRoot.position
+					
+					local realFinalToe = SE_AAH_GetFinalBone realCharThigh
+					format "Final Toe is: %\n" realFinalToe.name
+					format "Final Toe parent is: %\n" realFinalToe.parent.name
+					
+					local realFinalToeAxisHelper = point size:0.1
+					realFinalToeAxisHelper.position = (realFinalToe.position - realFinalToe.parent.position)*100 + realFinalToe.parent.position
+					
+					local yAxisFinalLocalAxisHelper = point size:0.1
+					yAxisFinalLocalAxisHelper.name = realCharRoot.name + " Local Y Axis Helper"
+					
+					local rFTYAxisLength = length (realFinalToeAxisHelper.position - yAxisFinalAxisHelper.position)
+					local rFTYAxis2Length = length (realFinalToeAxisHelper.position - yAxisFinalAxis2Helper.position)
+					if rFTYAxisLength > rFTYAxis2Length then
+					(
+						yAxisFinalLocalAxisHelper.position = yAxisFinalAxis2Helper.position
+						format "% Local Y Axis is: %\n" realCharRoot.name yAxisFinalAxis2Helper.name
+					)
+					else
+					(
+						yAxisFinalLocalAxisHelper.position = yAxisFinalAxisHelper.position
+						format "% Local Y Axis is: %\n" realCharRoot.name yAxisFinalAxisHelper.name
+					)
+					yAxisFinalLocalAxisHelper.parent = realRootHelper
+					
+					delete realFinalToeAxisHelper
+					delete yAxisFinalAxisHelper
+					delete yAxisFinalAxis2Helper
+					delete xAxisFinalAxisHelper
+					delete zAxisFinalAxisHelper
+					select realRootHelper
+					
+					
+					
+					
+					
+					
+					
+					
+					
+				)
 			)
 			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+		)
+	)
+	
+	on btn_BonesAdaptationTool pressed do
+	(
+		if (queryBox "Have you selected any bone of hierarchy or any of the meshes?" title:"WARNING") do
+		(
+			if selection.count > 0 then --if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+			(
+				ProcessUpdateFreezeTrigger = true
+				Process_Rollout.lbl_PrcssAAH.text = "Preparing for bones adaptation..."
+				Process_Rollout.prgb_AAH.value = 5
+				try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+				UpdateOrCreateAAHHelperLayer()
+				SE_AAH_MarkAllSkinsAndBonesInScene()
+				local currentMeshes = #()
+				local currentBones = #()
+				local currentSkinMeshNumber
+				if getUserProp selection[1] "SkinMeshNumber" != undefined and getUserProp selection[1] "SkinMeshNumber" != -1 do currentSkinMeshNumber = getUserProp selection[1] "SkinMeshNumber"
+				if currentSkinMeshNumber != undefined then
+				(
+					local shitFound = false
+					for obj in objects while shitFound == false do
+					(
+						if (HasSkinModifier obj) do
+						(
+							if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == currentSkinMeshNumber do
+							(
+								local currentBonesTemp = SE_AAH_GetRelatedSkinBones obj
+								currentBones = GetAllHierarchy currentBonesTemp[1] 0
+								currentMeshes = SE_AAH_GetRelatedSkinMeshes obj
+								shitFound = true
+							)
+						)
+					)
+					if currentMeshes.count > 0 and currentBones.count > 0 do format "%: Found meshes: %, Found bones: %\n" currentMeshes[1].name currentMeshes.count currentBones.count
+
+					if currentMeshes.count > 0 and currentBones.count > 0 then
+					(
+						--local sHier = currentBones
+						--local info_str_msg = currentMeshes[1].name + ": Found meshes: " + currentMeshes.count as string + ", Found bones: " + currentBones.count as string
+						--messagebox info_str_msg title:"TEST!"
+						
+						Process_Rollout.lbl_PrcssAAH.text = "Cloning hierarchy..."
+						Process_Rollout.prgb_AAH.value = 10
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						
+						if chkbx_BAResetScale.state == true do
+						(
+							for currentBonesRSNode in currentBones do
+							(
+								if ClassOf currentBonesRSNode == point or ClassOf currentBonesRSNode == bone or ClassOf currentBonesRSNode == dummy or chkbx_BATransferObjects.state == false do
+								(
+									if currentBonesRSNode != currentBones[1] do in coordsys parent currentBonesRSNode.scale = [1,1,1]
+								)
+							)
+							
+						)
+						SE_AAH_SetBonesIndexesnTypes currentBones
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						 
+						local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false chkbx_BATransferObjects.state -- make a clone of the hierarchy with array of new helpers and new rotations
+						Process_Rollout.lbl_PrcssAAH.text = "Layers preparation..."
+						Process_Rollout.prgb_AAH.value = 20
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							
+						local newLayerName
+						local oldBonesLayer = SE_AAH_GetUniqueHierarchyLayer currentBones -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
+						if oldBonesLayer == -1 or oldBonesLayer == -2 then
+						(
+							oldBonesLayer = SE_AAH_CreateLayerForHierarchy currentBones ("Bones " + currentBones[1].name + " old layer")
+							newLayerName = ("Bones " + currentBones[1].name + " clone layer")
+						)
+						else newLayerName = (oldBonesLayer.name + " clone layer")
+						oldBonesLayer.isHidden = true
+						
+						local cHLayer = SE_AAH_CreateLayerForHierarchy currentBonesCloneArray newLayerName
+						Process_Rollout.lbl_PrcssAAH.text = "Bone rotations calculation..."
+						Process_Rollout.prgb_AAH.value = 30
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							
+						SE_AAH_CalculateBonesRotations currentBonesCloneArray  
+						Process_Rollout.lbl_PrcssAAH.text = "Animation transfering..."
+						Process_Rollout.prgb_AAH.value = 40
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						
+						if chkbx_BATransferAnimation.state == true do SE_AAH_TransferAnimation currentBones currentBonesCloneArray chkbx_BATransferObjects.state
+						currentBonesCloneArray = GetAllHierarchy currentBonesCloneArray[1] 0 -- reasigning the array cause of the possible changings after SE_AAH_TransferAnimation
+						
+						if chkbx_BACleanModifiersList.state == true do
+						(
+							Process_Rollout.lbl_PrcssAAH.text = "Cleaning modifier list..."
+							Process_Rollout.prgb_AAH.value = 60
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							
+							for cMCMLMesh in currentMeshes do
+							(
+								if cMCMLMesh.modifiers.count > 0 do
+								(
+									for m in cMCMLMesh.modifiers do
+									(
+										if iskindof m Edit_Mesh or iskindof m Edit_Poly or iskindof m Skin then format "%: Found modifier: %\n" cMCMLMesh.name m.name
+										else deleteModifier cMCMLMesh m
+									)
+								)
+							)
+						)
+						
+						Process_Rollout.lbl_PrcssAAH.text = "Transfering bones' weights..."
+						Process_Rollout.prgb_AAH.value = 70
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						
+						for cMCMLMesh in currentMeshes do
+						(
+							local skinMeshBonesList = SE_AAH_GetSkinMeshBones cMCMLMesh --currentBonesTemp
+							local skinMeshCloneBonesList = SE_AAH_GetSkinMeshClonedBones skinMeshBonesList currentBonesCloneArray
+							local skinMeshCloneTheLastofBonesList = SE_AAH_GetSkinMeshLastLeftClonedBones currentBonesCloneArray skinMeshCloneBonesList
+							format "skinMeshBonesList: %, skinMeshCloneBonesList: %, currentBonesCloneArray: %, skinMeshCloneTheLastofBonesList: %\n" skinMeshBonesList.count skinMeshCloneBonesList.count currentBonesCloneArray.count skinMeshCloneTheLastofBonesList.count
+							
+							local skinWeightMesh = SE_AAH_CreateWeightMesh cMCMLMesh
+							select cMCMLMesh
+							collapseStack cMCMLMesh
+							
+							unfreeze cMCMLMesh DoLayer:true
+							addModifier cMCMLMesh (Skin())
+							setCommandPanelTaskMode #modify
+							modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
+								
+							for currentBCloneANode in skinMeshCloneBonesList do
+							(
+								if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1
+							)
+							
+							clearselection()
+							select cMCMLMesh
+							selectmore skinWeightMesh
+							skinUtils.ImportSkinDataNoDialog true false false false false 1.0 0
+							
+							select cMCMLMesh
+							unfreeze cMCMLMesh DoLayer:true
+							setCommandPanelTaskMode #modify
+							modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
+							
+							for currentBCloneANode in skinMeshCloneTheLastofBonesList do
+							(
+								if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1 -- add the left bones after SkinUtils because of the stupid Max "Exception" error. But we need these bones to make our skins more stable in other programs like Blender.
+							)
+							
+							--cMCMLMesh.name = "SM_" + cMCMLMesh.name
+							cMCMLMesh.wirecolor = (color 255 144 0)
+							delete skinWeightMesh
+						)
+						
+						if chkbx_BASaveOriginal.state == false do
+						(
+							Process_Rollout.lbl_PrcssAAH.text = "Deleting old hierarchy..."
+							Process_Rollout.prgb_AAH.value = 90
+							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							
+							for currentBonesDNode in currentBones do
+							(
+								if chkbx_BATransferObjects.state == false or ClassOf currentBonesDNode == point or ClassOf currentBonesDNode == bone or ClassOf currentBonesDNode == dummy do
+								(
+									delete currentBonesDNode
+								)
+							)
+							try (LayerManager.deleteLayerByName oldBonesLayer.name) catch()
+						)
+						
+						select currentBonesCloneArray[1]
+						
+						Process_Rollout.lbl_PrcssAAH.text = "Bone adaptation finished!"
+						Process_Rollout.prgb_AAH.value = 0
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						ProcessUpdateFreezeTrigger = false
+						
+						local info_str_msg = "Character adaptation finished!\n\nAdapted meshes: " + currentMeshes.count as string + "\nAdapted bones: " + currentBonesCloneArray.count as string
+						messagebox info_str_msg title:"Done!"
+						
+					)
+					else
+					(
+						Process_Rollout.lbl_PrcssAAH.text = "No related skin mesh or bones found!"
+						Process_Rollout.prgb_AAH.value = 0
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						ProcessUpdateFreezeTrigger = false
+					)
+				)
+				else
+				(
+					Process_Rollout.lbl_PrcssAAH.text = "No related skin mesh found!"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					ProcessUpdateFreezeTrigger = false
+				)
+			)
+			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy or any mesh and THEN push that button!)\n" title:"ERROR"
+		)
+	)
+	
+	on btn_SceneBonesAdaptationTool pressed do
+	(
+		if (queryBox "Are you sure you want to adapt the whole scene?" title:"WARNING") do
+		(
+			ProcessUpdateFreezeTrigger = true
+			SE_AAH_MarkAllSkinsAndBonesInScene()
+			local currentMeshes = #()
+			local currentBones = #()
+			local adaptedCharactersCount = 0
+			local adaptedMeshesCount = 0
+			local adaptedBonesCount = 0
+			local currentSkinMeshNumber = 1
+			for i=1 to NewSM_Number do
+			(
+				local shitFound = false
+				for obj in objects while shitFound == false do
+				(
+					if (HasSkinModifier obj) do
+					(
+						if getUserProp obj "SkinMeshNumber" != undefined and getUserProp obj "SkinMeshNumber" == i do
+						(
+							local currentBonesTemp = SE_AAH_GetRelatedSkinBones obj
+							currentBones = GetAllHierarchy currentBonesTemp[1] 0
+							currentMeshes = SE_AAH_GetRelatedSkinMeshes obj
+							shitFound = true
+						)
+					)
+				)
+				if currentMeshes.count > 0 and currentBones.count > 0 do format "%) %: Found meshes: %, Found bones: %\n" i currentMeshes[1].name currentMeshes.count currentBones.count
+				
+				if currentMeshes.count > 0 and currentBones.count > 0 then
+				(
+					adaptedBonesCount += currentBones.count
+					adaptedMeshesCount += currentMeshes.count
+					--local sHier = currentBones
+					--local info_str_msg = currentMeshes[1].name + ": Found meshes: " + currentMeshes.count as string + ", Found bones: " + currentBones.count as string
+					--messagebox info_str_msg title:"TEST!"
+					
+					Process_Rollout.lbl_PrcssAAH.text = "Cloning hierarchy..."
+					Process_Rollout.prgb_AAH.value = 10
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+					if chkbx_BAResetScale.state == true do
+					(
+						for currentBonesRSNode in currentBones do
+						(
+							if ClassOf currentBonesRSNode == point or ClassOf currentBonesRSNode == bone or ClassOf currentBonesRSNode == dummy or chkbx_BATransferObjects.state == false do
+							(
+								if currentBonesRSNode != currentBones[1] do in coordsys parent currentBonesRSNode.scale = [1,1,1]
+							)
+						)
+						
+					)
+					SE_AAH_SetBonesIndexesnTypes currentBones
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+					local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false chkbx_BATransferObjects.state -- make a clone of the hierarchy with array of new helpers and new rotations
+					Process_Rollout.lbl_PrcssAAH.text = "Layers preparation..."
+					Process_Rollout.prgb_AAH.value = 20
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+					local newLayerName
+					local oldBonesLayer = SE_AAH_GetUniqueHierarchyLayer currentBones -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
+					if oldBonesLayer == -1 or oldBonesLayer == -2 then
+					(
+						oldBonesLayer = SE_AAH_CreateLayerForHierarchy currentBones ("Bones " + currentBones[1].name + " old layer")
+						newLayerName = ("Bones " + currentBones[1].name + " clone layer")
+					)
+					else newLayerName = (oldBonesLayer.name + " clone layer")
+					oldBonesLayer.isHidden = true
+					local cHLayer = SE_AAH_CreateLayerForHierarchy currentBonesCloneArray newLayerName
+					Process_Rollout.lbl_PrcssAAH.text = "Bone rotations calculation..."
+					Process_Rollout.prgb_AAH.value = 30
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+					SE_AAH_CalculateBonesRotations currentBonesCloneArray  
+					Process_Rollout.lbl_PrcssAAH.text = "Animation transfering..."
+					Process_Rollout.prgb_AAH.value = 40
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+					if chkbx_BATransferAnimation.state == true do SE_AAH_TransferAnimation currentBones currentBonesCloneArray chkbx_BATransferObjects.state
+					currentBonesCloneArray = GetAllHierarchy currentBonesCloneArray[1] 0 -- reasigning the array cause of the possible changings after SE_AAH_TransferAnimation
+					
+					if chkbx_BACleanModifiersList.state == true do
+					(
+						Process_Rollout.lbl_PrcssAAH.text = "Cleaning modifier list..."
+						Process_Rollout.prgb_AAH.value = 60
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						for cMCMLMesh in currentMeshes do
+						(
+							if cMCMLMesh.modifiers.count > 0 do
+							(
+								for m in cMCMLMesh.modifiers do
+								(
+									if iskindof m Edit_Mesh or iskindof m Edit_Poly or iskindof m Skin then format "%: Found modifier: %\n" cMCMLMesh.name m.name
+									else deleteModifier cMCMLMesh m
+								)
+							)
+						)
+					)
+					
+					Process_Rollout.lbl_PrcssAAH.text = "Transfering bones' weights..."
+					Process_Rollout.prgb_AAH.value = 70
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					
+					for cMCMLMesh in currentMeshes do
+					(
+						local skinMeshBonesList = SE_AAH_GetSkinMeshBones cMCMLMesh --currentBonesTemp
+						local skinMeshCloneBonesList = SE_AAH_GetSkinMeshClonedBones skinMeshBonesList currentBonesCloneArray
+						local skinMeshCloneTheLastofBonesList = SE_AAH_GetSkinMeshLastLeftClonedBones currentBonesCloneArray skinMeshCloneBonesList
+						format "skinMeshBonesList: %, skinMeshCloneBonesList: %, currentBonesCloneArray: %, skinMeshCloneTheLastofBonesList: %\n" skinMeshBonesList.count skinMeshCloneBonesList.count currentBonesCloneArray.count skinMeshCloneTheLastofBonesList.count
+						
+						local skinWeightMesh = SE_AAH_CreateWeightMesh cMCMLMesh
+						select cMCMLMesh
+						collapseStack cMCMLMesh
+						
+						unfreeze cMCMLMesh DoLayer:true
+						addModifier cMCMLMesh (Skin())
+						setCommandPanelTaskMode #modify
+						modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
+							
+						for currentBCloneANode in skinMeshCloneBonesList do
+						(
+							if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1
+						)
+						
+						clearselection()
+						select cMCMLMesh
+						selectmore skinWeightMesh
+						skinUtils.ImportSkinDataNoDialog true false false false false 1.0 0
+						
+						select cMCMLMesh
+						unfreeze cMCMLMesh DoLayer:true
+						setCommandPanelTaskMode #modify
+						modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
+						
+						for currentBCloneANode in skinMeshCloneTheLastofBonesList do
+						(
+							if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1 -- add the left bones after SkinUtils because of the stupid Max "Exception" error. But we need these bones to make our skins more stable in other programs like Blender.
+						)
+						
+						--cMCMLMesh.name = "SM_" + cMCMLMesh.name
+						cMCMLMesh.wirecolor = (color 255 144 0)
+						delete skinWeightMesh
+					)
+					
+					if chkbx_BASaveOriginal.state == false do
+					(
+						Process_Rollout.lbl_PrcssAAH.text = "Deleting old hierarchy..."
+						Process_Rollout.prgb_AAH.value = 90
+						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+						
+						for currentBonesDNode in currentBones do
+						(
+							if chkbx_BATransferObjects.state == false or ClassOf currentBonesDNode == point or ClassOf currentBonesDNode == bone or ClassOf currentBonesDNode == dummy do
+							(
+								delete currentBonesDNode
+							)
+						)
+						try (LayerManager.deleteLayerByName oldBonesLayer.name) catch()
+					)
+					
+					--select currentBonesCloneArray[1]
+					
+					Process_Rollout.lbl_PrcssAAH.text = "Bone adaptation finished!"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					ProcessUpdateFreezeTrigger = false
+					
+					adaptedCharactersCount += 1
+					
+				)
+				else
+				(
+					Process_Rollout.lbl_PrcssAAH.text = "No related skin mesh or bones found!"
+					Process_Rollout.prgb_AAH.value = 0
+					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+					ProcessUpdateFreezeTrigger = false
+				)
+				
+				
+				free currentMeshes
+				free currentBones
+			)
+			local info_str_msg = "Scene adaptation finished!\n\nAdapted characters: " + adaptedCharactersCount as string + "\nTotal adapted meshes: " + adaptedMeshesCount as string + "\nTotal adapted bones: " + adaptedBonesCount as string
+			messagebox info_str_msg title:"Done!"
+			ProcessUpdateFreezeTrigger = false
 		)
 	)
 )
@@ -3366,9 +4267,11 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 					if chkbx_ThTrnsfrmPos.state == true do	s.position = [0.0,0.0,0.0]
 					if chkbx_ThTrnsfrmRot.state == true do
 					(
-						in coordsys parent s.rotation.x_rotation = 0.0
-						in coordsys parent s.rotation.y_rotation = 0.0
-						in coordsys parent s.rotation.z_rotation = 0.0
+						--in coordsys world s.rotation.x_rotation = 0.0
+						--in coordsys world s.rotation.y_rotation = 0.0
+						--in coordsys world s.rotation.z_rotation = 0.0
+						--s.transform = matrix3 1
+						s.rotation = eulerangles 0 0 0
 					)
 					if chkbx_ThTrnsfrmScale.state == true do
 					(
@@ -3832,8 +4735,8 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 (
 	group "Skin Mesh Triggers"
 	(
-		button SMTrigFreeze "Freeze" width:57 height:16 align:#left across:2 tooltip:"Freezes/unfreezes skin mesh.\n\nSelect any bone/helper or skin mesh and push this button.\n\nWARNING!\nFirst time may work slow, but works fast later!"
-		button SMTrigXRay "Transparency" width:90 height:16 align:#right tooltip:"Enables/Disables transparency for skin mesh.\n\nSelect any bone/helper or skin mesh and push this button.\n\nWARNING!\nFirst time may work slow, but works fast later!"
+		button SMTrigFreeze "Freeze" width:57 height:16 align:#left across:2 tooltip:"Freezes/unfreezes skin mesh.\n\nSelect any bone/helper or skin mesh and push this button.\n\nWARNING!\nFirst time may work slow (because of the scene analysis), but works fast later!"
+		button SMTrigXRay "Transparency" width:90 height:16 align:#right tooltip:"Enables/Disables transparency for skin mesh.\n\nSelect any bone/helper or skin mesh and push this button.\n\nWARNING!\nFirst time may work slow (because of the scene analysis), but works fast later!"
 	)
 	group "Create/Delete/Bake Controllers"
 	(
@@ -4630,7 +5533,11 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			local s = selection[1]
 			if ClassOf s != point and ClassOf s != bone and ClassOf s != dummy then
 			(
-				if (HasSkinModifier s) do MarkRelatedSkinBones s
+				if getUserProp s "SkinMeshNumber" == undefined do
+				(
+					SE_AAH_MarkAllSkinsAndBonesInScene()
+					--if (HasSkinModifier s) do SE_AAH_MarkRelatedSkinBones s
+				)
 				if s.isFrozen == true then
 				(
 					unfreeze s
@@ -4646,7 +5553,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 				local s_Hierarchy = #()
 				if getUserProp s "SkinMeshNumber" != undefined and getUserProp s "SkinMeshNumber" != -1 then append s_Hierarchy s
 				else s_Hierarchy = GetAllHierarchy s 0
-				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
+				local s2 = SE_AAH_GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
 					for obj in s2 do
@@ -4662,7 +5569,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 						)
 					)
 				)
-				else if getUserProp s "SkinMeshName" != undefined then -- add later SkinMeshName property for extra situations when GetSkinMeshes is not working properly
+				else if getUserProp s "SkinMeshName" != undefined then -- add later SkinMeshName property for extra situations when SE_AAH_GetSkinMeshes is not working properly
 				(
 					local SkinMeshName = getUserProp s "SkinMeshName"
 					local MeshFound = false
@@ -4701,7 +5608,11 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 			local s = selection[1]
 			if ClassOf s != point and ClassOf s != bone and ClassOf s != dummy then
 			(
-				if (HasSkinModifier s) do MarkRelatedSkinBones s
+				if getUserProp s "SkinMeshNumber" == undefined do
+				(
+					SE_AAH_MarkAllSkinsAndBonesInScene()
+					--if (HasSkinModifier s) do SE_AAH_MarkRelatedSkinBones s
+				)
 				if ((getVisController s) == undefined) do
 				(
 					s.visibility = bezier_float()
@@ -4722,7 +5633,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 				local s_Hierarchy = #()
 				if getUserProp s "SkinMeshNumber" != undefined and getUserProp s "SkinMeshNumber" != -1 then append s_Hierarchy s
 				else s_Hierarchy = GetAllHierarchy s 0
-				local s2 = GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
+				local s2 = SE_AAH_GetSkinMeshes s_Hierarchy --// Returns any skin meshes (if any) associated with the picked hierarchy
 				if s2.count > 0 then
 				(
 					for obj in s2 do
@@ -4743,7 +5654,7 @@ rollout Body_Anim_Rollout "Body Anim" width:132 height:170
 						)
 					)
 				)
-				else if getUserProp s "SkinMeshName" != undefined then -- add later SkinMeshName property for extra situations when GetSkinMeshes is not working properly
+				else if getUserProp s "SkinMeshName" != undefined then -- add later SkinMeshName property for extra situations when SE_AAH_GetSkinMeshes is not working properly
 				(
 					local SkinMeshName = getUserProp s "SkinMeshName"
 					local MeshFound = false
@@ -6170,11 +7081,11 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 		button AboutButton "About" width:58 height:16 pos:[106,25] tooltip:"Push this button to see some extra info"
 	)
 	
-	rollout AboutDialog "Another Animation Helper v.0.987b" width:275 height:315
+	rollout AboutDialog "Another Animation Helper v.0.988b" width:275 height:315
 	(
-		label abd1 "\"Another Animation Helper\" v.0.987b (Open Beta)" align:#left
+		label abd1 "\"Another Animation Helper\" v.0.988b (Open Beta)" align:#left
 		label abd2 ""
-		label abd3 "Made by Shagg_E, 2017-2022:" align:#left
+		label abd3 "Made by Shagg_E, 2017-2023:" align:#left
 		HyperLink github "https://github.com/ShaggEw/AnotherAnimationHelper" address:"https://github.com/ShaggEw/AnotherAnimationHelper" color: (color 191 76 0) hovercolor:(color 255 106 0) visitedcolor:(color 127 51 0)
 		HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
 		HyperLink ytchannel "https://youtube.com/@Shagg_E" address:"https://youtube.com/@Shagg_E" color: (color 191 0 0) hovercolor:(color 255 0 0) visitedcolor:(color 127 0 0)
@@ -6185,9 +7096,9 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 		--label abd7 ""
 		label abd8 "I want to credit these people:" align:#left
 		label abd9 "Kam, Yelmi, Deniska, The Hero, Mr. Jago," align:#left
-		label abd10 "Wesser and Lorne Brooks - for their incredible scripts" align:#left
-		label abd11 "and researches, which inspired and helped me a lot" align:#left
-		--label abd12 "" align:#left
+		label abd10 "Wesser, DK22Pac, aleks926820 and Lorne Brooks" align:#left
+		label abd11 "- for their incredible scripts and researches," align:#left
+		label abd12 "which inspired and helped me a lot" align:#left
 		--label abd13 "" align:#left
 		--label abd14 "" align:#left
 		label abd15 "to work on all this stuff," align:#left
@@ -6217,14 +7128,14 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 /*********************************************************************************************************************************************************************/
 
 try (closeRolloutFloater SE_AAHWindow) catch ()
-SE_AAHWindow = NewRolloutFloater "AA Helper" 190 835 50 100
+SE_AAHWindow = NewRolloutFloater "AA Helper" 190 535 50 100
 addRollout Process_Rollout SE_AAHWindow --rolledUp:true
-addRollout Rig_Tuner_Rollout SE_AAHWindow rolledUp:true
-addRollout Main_Anim_Rollout SE_AAHWindow --rolledUp:true
+addRollout Rig_Tuner_Rollout SE_AAHWindow --rolledUp:true
+addRollout Main_Anim_Rollout SE_AAHWindow rolledUp:true
 addRollout Body_Anim_Rollout SE_AAHWindow rolledUp:true
---addRollout Face_Anim_Rollout SE_AAHWindow rolledUp:true
-addRollout Anim_Adapt_Rollout SE_AAHWindow --rolledUp:true
---addRollout Hierarchies_Rollout SE_AAHWindow rolledUp:true
+----addRollout Face_Anim_Rollout SE_AAHWindow rolledUp:true
+addRollout Anim_Adapt_Rollout SE_AAHWindow rolledUp:true
+----addRollout Hierarchies_Rollout SE_AAHWindow rolledUp:true
 addRollout Info_Rollout SE_AAHWindow rolledUp:true
 
 /*********************************************************************************************************************************************************************/
