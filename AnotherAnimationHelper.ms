@@ -1,5 +1,5 @@
 /**************************************************************************************************************************
-// Another Animation Helper v0.988b
+// Another Animation Helper v0.989b
 // This script was made by Shagg_E, 2017-2023
 **************************************************************************************************************************/
 
@@ -32,6 +32,7 @@ global ACAnimRangeStartKeyframe = undefined
 global ACAnimRangeEndKeyframe = undefined
 
 struct HierarchyFinalBoneCalc (hFBoneLevel, hFCurrentBone)
+struct AdaptedHierarchyInfo (adaptedMeshes, adaptedBones)
 
 struct CharacterHierarchy (spinelinks, leglinks, taillinks, fingersnumber, fingerlinks, toesnumber, toelinks, headid)
 
@@ -932,6 +933,11 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 						sHierTempCloneMember = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue --bone pos: [0.0,0.0,0.0] wirecolor:blue
 						if cloneTransformTrigger then sHierTempCloneMember.transform = sHierMember.transform
 						else sHierTempCloneMember.position = sHierMember.position
+						if ClassOf sHierMember != point and ClassOf sHierMember != bone and ClassOf sHierMember != dummy do
+						(
+							setUserProp sHierMember "ClonedHierObject" 1
+							setUserProp sHierTempCloneMember "ClonedHierObject" 1
+						)
 						--in coordsys world sHierTempCloneMember.position.x = in coordsys world sHierMember.position.x
 						--in coordsys world sHierTempCloneMember.position.y = in coordsys world sHierMember.position.y
 						--in coordsys world sHierTempCloneMember.position.z = in coordsys world sHierMember.position.z
@@ -991,7 +997,7 @@ fn SE_AAH_CalculateBonesRotations sHierCurrentOne =
 			(
 				for sHierChild in sHierBone.children do
 				(
-					if firstChild == undefined do firstChild = sHierChild
+					if firstChild == undefined and (getUserProp sHierChild "ClonedHierObject" == undefined or getUserProp sHierChild "ClonedHierObject" != 1) do firstChild = sHierChild
 					sHierChild.parent = undefined
 					append sHierChildren sHierChild
 				)
@@ -1121,7 +1127,8 @@ fn SE_AAH_TransferAnimation sHier sHierCloneArray transferObjectsTrigger =
 									in coordsys world sHNode.transform = in coordsys world currentTempNode.transform
 								)
 							)
-							sHCANode.layer.addnode sHNode
+							--sHCANode.layer.addnode sHNode
+							(LayerManager.getLayerFromName "0").addnode sHNode
 							append clonedHDeletedNodes sHCANode
 							--delete sHCANode
 						)
@@ -1607,6 +1614,163 @@ fn SE_AAH_CreateWeightMesh cMCMLMesh =
 	return skinWeightMesh
 )
 
+--local adaptedCharsInfo = SE_AAH_AdaptBones currentMeshes currentBones chkbx_BATransferAnimation.state chkbx_BAResetScale.state chkbx_BATransferObjects.state chkbx_BASaveOriginal.state chkbx_BACleanModifiersList.state ShowDialoguesPerChar
+-- struct AdaptedHierarchyInfo (adaptedMeshes, adaptedBones)
+
+fn SE_AAH_AdaptBones currentMeshes currentBones BATransferAnimation BAResetScale BATransferObjects BASaveOriginal BACleanModifiersList =
+(
+	--local  adHierInfo = AdaptedHierarchyInfo 0 0
+	--adHierInfo.adaptedMeshes += 1
+	--adHierInfo.adaptedBones += 1
+	local adBonesCount = 0
+	
+	
+	
+	Process_Rollout.lbl_PrcssAAH.text = "Cloning hierarchy..."
+	Process_Rollout.prgb_AAH.value = 10
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	if BAResetScale == true do
+	(
+		for currentBonesRSNode in currentBones do
+		(
+			if ClassOf currentBonesRSNode == point or ClassOf currentBonesRSNode == bone or ClassOf currentBonesRSNode == dummy or BATransferObjects == false do
+			(
+				if currentBonesRSNode != currentBones[1] do
+				(
+					if (in coordsys parent currentBonesRSNode.scale.x < 0.7) or (in coordsys parent currentBonesRSNode.scale.x > 1.3) or (in coordsys parent currentBonesRSNode.scale.y < 0.7) or (in coordsys parent currentBonesRSNode.scale.y > 1.3) or (in coordsys parent currentBonesRSNode.scale.z < 0.7) or (in coordsys parent currentBonesRSNode.scale.z > 1.3) do in coordsys parent currentBonesRSNode.scale = [1,1,1]
+				)
+			)
+		)
+	)
+	SE_AAH_SetBonesIndexesnTypes currentBones
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false BATransferObjects -- make a clone of the hierarchy with array of new helpers and new rotations
+	Process_Rollout.lbl_PrcssAAH.text = "Layers preparation..."
+	Process_Rollout.prgb_AAH.value = 20
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	local newLayerName
+	local oldBonesLayer = SE_AAH_GetUniqueHierarchyLayer currentBones -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
+	if oldBonesLayer == -1 or oldBonesLayer == -2 then
+	(
+		oldBonesLayer = SE_AAH_CreateLayerForHierarchy currentBones ("Bones " + currentBones[1].name + " old layer")
+		newLayerName = ("Bones " + currentBones[1].name + " clone layer")
+	)
+	else newLayerName = (oldBonesLayer.name + " clone layer")
+	oldBonesLayer.isHidden = true
+	local cHLayer = SE_AAH_CreateLayerForHierarchy currentBonesCloneArray newLayerName
+	Process_Rollout.lbl_PrcssAAH.text = "Bone rotations calculation..."
+	Process_Rollout.prgb_AAH.value = 30
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	SE_AAH_CalculateBonesRotations currentBonesCloneArray  
+	Process_Rollout.lbl_PrcssAAH.text = "Animation transfering..."
+	Process_Rollout.prgb_AAH.value = 40
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	if BATransferAnimation == true do SE_AAH_TransferAnimation currentBones currentBonesCloneArray BATransferObjects
+	currentBonesCloneArray = GetAllHierarchy currentBonesCloneArray[1] 0 -- reasigning the array cause of the possible changings after SE_AAH_TransferAnimation
+	
+	if BACleanModifiersList == true do
+	(
+		Process_Rollout.lbl_PrcssAAH.text = "Cleaning modifier list..."
+		Process_Rollout.prgb_AAH.value = 60
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		for cMCMLMesh in currentMeshes do
+		(
+			if cMCMLMesh.modifiers.count > 0 do
+			(
+				for m in cMCMLMesh.modifiers do
+				(
+					if iskindof m Edit_Mesh or iskindof m Edit_Poly or iskindof m Skin then format "%: Found modifier: %\n" cMCMLMesh.name m.name
+					else deleteModifier cMCMLMesh m
+				)
+			)
+		)
+	)
+	
+	Process_Rollout.lbl_PrcssAAH.text = "Transfering bones' weights..."
+	Process_Rollout.prgb_AAH.value = 70
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	local oldSliderTime = sliderTime
+	sliderTime = 0.0f
+	at time 0.0f -- sliderTime
+	(
+		for cMCMLMesh in currentMeshes do
+		(
+			local skinMeshBonesList = SE_AAH_GetSkinMeshBones cMCMLMesh --currentBonesTemp
+			local skinMeshCloneBonesList = SE_AAH_GetSkinMeshClonedBones skinMeshBonesList currentBonesCloneArray
+			local skinMeshCloneTheLastofBonesList = SE_AAH_GetSkinMeshLastLeftClonedBones currentBonesCloneArray skinMeshCloneBonesList
+			format "skinMeshBonesList: %, skinMeshCloneBonesList: %, currentBonesCloneArray: %, skinMeshCloneTheLastofBonesList: %\n" skinMeshBonesList.count skinMeshCloneBonesList.count currentBonesCloneArray.count skinMeshCloneTheLastofBonesList.count
+			
+			local skinWeightMesh = SE_AAH_CreateWeightMesh cMCMLMesh
+			select cMCMLMesh
+			collapseStack cMCMLMesh
+			
+			unfreeze cMCMLMesh DoLayer:true
+			addModifier cMCMLMesh (Skin())
+			setCommandPanelTaskMode #modify
+			modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
+				
+			for currentBCloneANode in skinMeshCloneBonesList do
+			(
+				if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1
+			)
+			
+			clearselection()
+			select cMCMLMesh
+			selectmore skinWeightMesh
+			skinUtils.ImportSkinDataNoDialog true false false false false 1.0 0
+			
+			select cMCMLMesh
+			unfreeze cMCMLMesh DoLayer:true
+			setCommandPanelTaskMode #modify
+			modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
+			
+			for currentBCloneANode in skinMeshCloneTheLastofBonesList do
+			(
+				if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1 -- add the left bones after SkinUtils because of the stupid Max "Exception" error. But we need these bones to make our skins more stable in other programs like Blender.
+			)
+			
+			--cMCMLMesh.name = "SM_" + cMCMLMesh.name
+			cMCMLMesh.wirecolor = (color 255 144 0)
+			delete skinWeightMesh
+		)
+	)
+	sliderTime = oldSliderTime
+	
+	if BASaveOriginal == false do
+	(
+		Process_Rollout.lbl_PrcssAAH.text = "Deleting old hierarchy..."
+		Process_Rollout.prgb_AAH.value = 90
+		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+		
+		for currentBonesDNode in currentBones do
+		(
+			if BATransferObjects == false or ClassOf currentBonesDNode == point or ClassOf currentBonesDNode == bone or ClassOf currentBonesDNode == dummy do
+			(
+				delete currentBonesDNode
+			)
+		)
+		try (LayerManager.deleteLayerByName oldBonesLayer.name) catch()
+	)
+	adBonesCount = currentBonesCloneArray.count
+	
+	--select currentBonesCloneArray[1]
+	
+	Process_Rollout.lbl_PrcssAAH.text = "Bone adaptation finished!"
+	Process_Rollout.prgb_AAH.value = 0
+	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+	
+	
+	
+	
+	return adBonesCount
+)
+
 fn RoundUp2 RValue RAccValue =
 (
 	return ((ceil (RValue / RAccValue)) * RAccValue)
@@ -1755,7 +1919,7 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		--button theBorderlessButton2 "I am a button, too!" border:false
 		button btn_BonesAdaptationTool "Skel Adapt" across:2 height:16 align:#left tooltip:"Skeleton adaptation.\n\nCreates a clone of hierarchy, automatically calculates proper rotation values.\nCan transfer animation from the old hierarchy to the new one.\nAlso automatically calculates BoneIndex parameters for bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
 		checkbox chkbx_BATransferAnimation "with Anim" align:#right checked:true tooltip:"If checked, it will transfer animation from the old bone hierarchy to the new one."
-		checkbox chkbx_BAResetScale "RS" across:4 align:#left checked:false tooltip:"Reset scale.\n\nIf checked, it will reset scale for all the bones to the default while skeleton adaptation.\n\nUse this if you have some scale problems while animation convertations from Maya or other programs."
+		checkbox chkbx_BAResetScale "RS" across:4 align:#left checked:true tooltip:"Reset scale.\n\nIf checked, it will reset scale for all the bones (except the main Root bone/controller) to the default while skeleton adaptation, if their scale is less than 0,7 or more than 1,3 than the default scale.\nOtherwise you can reset bones' scales manually, if you need.\n\nUse this if you have some scale problems while animation conversions from Maya or other programs."
 		checkbox chkbx_BATransferObjects "BO" checked:true tooltip:"Bake objects' animation.\n\nIf checked, it will bake linked objects' animation to the world position."
 		checkbox chkbx_BASaveOriginal "SO" checked:false tooltip:"Save original hierarchy.\n\nIf checked, it will save original bone hierarchy in hidden layer."
 		checkbox chkbx_BACleanModifiersList "CM" align:#right checked:true tooltip:"Clean modifiers list.\n\nIf checked, it will clean character's modifier list before adaptation.\n\nIt's important in most of the situations, that's why its checked by default. Uncheck ONLY if you KNOW what you're doing!"
@@ -2606,140 +2770,13 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 						--local info_str_msg = currentMeshes[1].name + ": Found meshes: " + currentMeshes.count as string + ", Found bones: " + currentBones.count as string
 						--messagebox info_str_msg title:"TEST!"
 						
-						Process_Rollout.lbl_PrcssAAH.text = "Cloning hierarchy..."
-						Process_Rollout.prgb_AAH.value = 10
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 						
-						if chkbx_BAResetScale.state == true do
-						(
-							for currentBonesRSNode in currentBones do
-							(
-								if ClassOf currentBonesRSNode == point or ClassOf currentBonesRSNode == bone or ClassOf currentBonesRSNode == dummy or chkbx_BATransferObjects.state == false do
-								(
-									if currentBonesRSNode != currentBones[1] do in coordsys parent currentBonesRSNode.scale = [1,1,1]
-								)
-							)
+						local adBnsCount = SE_AAH_AdaptBones currentMeshes currentBones chkbx_BATransferAnimation.state chkbx_BAResetScale.state chkbx_BATransferObjects.state chkbx_BASaveOriginal.state chkbx_BACleanModifiersList.state
 							
-						)
-						SE_AAH_SetBonesIndexesnTypes currentBones
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						 
-						local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false chkbx_BATransferObjects.state -- make a clone of the hierarchy with array of new helpers and new rotations
-						Process_Rollout.lbl_PrcssAAH.text = "Layers preparation..."
-						Process_Rollout.prgb_AAH.value = 20
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 							
-						local newLayerName
-						local oldBonesLayer = SE_AAH_GetUniqueHierarchyLayer currentBones -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
-						if oldBonesLayer == -1 or oldBonesLayer == -2 then
-						(
-							oldBonesLayer = SE_AAH_CreateLayerForHierarchy currentBones ("Bones " + currentBones[1].name + " old layer")
-							newLayerName = ("Bones " + currentBones[1].name + " clone layer")
-						)
-						else newLayerName = (oldBonesLayer.name + " clone layer")
-						oldBonesLayer.isHidden = true
-						
-						local cHLayer = SE_AAH_CreateLayerForHierarchy currentBonesCloneArray newLayerName
-						Process_Rollout.lbl_PrcssAAH.text = "Bone rotations calculation..."
-						Process_Rollout.prgb_AAH.value = 30
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-							
-						SE_AAH_CalculateBonesRotations currentBonesCloneArray  
-						Process_Rollout.lbl_PrcssAAH.text = "Animation transfering..."
-						Process_Rollout.prgb_AAH.value = 40
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						
-						if chkbx_BATransferAnimation.state == true do SE_AAH_TransferAnimation currentBones currentBonesCloneArray chkbx_BATransferObjects.state
-						currentBonesCloneArray = GetAllHierarchy currentBonesCloneArray[1] 0 -- reasigning the array cause of the possible changings after SE_AAH_TransferAnimation
-						
-						if chkbx_BACleanModifiersList.state == true do
-						(
-							Process_Rollout.lbl_PrcssAAH.text = "Cleaning modifier list..."
-							Process_Rollout.prgb_AAH.value = 60
-							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-							
-							for cMCMLMesh in currentMeshes do
-							(
-								if cMCMLMesh.modifiers.count > 0 do
-								(
-									for m in cMCMLMesh.modifiers do
-									(
-										if iskindof m Edit_Mesh or iskindof m Edit_Poly or iskindof m Skin then format "%: Found modifier: %\n" cMCMLMesh.name m.name
-										else deleteModifier cMCMLMesh m
-									)
-								)
-							)
-						)
-						
-						Process_Rollout.lbl_PrcssAAH.text = "Transfering bones' weights..."
-						Process_Rollout.prgb_AAH.value = 70
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						
-						for cMCMLMesh in currentMeshes do
-						(
-							local skinMeshBonesList = SE_AAH_GetSkinMeshBones cMCMLMesh --currentBonesTemp
-							local skinMeshCloneBonesList = SE_AAH_GetSkinMeshClonedBones skinMeshBonesList currentBonesCloneArray
-							local skinMeshCloneTheLastofBonesList = SE_AAH_GetSkinMeshLastLeftClonedBones currentBonesCloneArray skinMeshCloneBonesList
-							format "skinMeshBonesList: %, skinMeshCloneBonesList: %, currentBonesCloneArray: %, skinMeshCloneTheLastofBonesList: %\n" skinMeshBonesList.count skinMeshCloneBonesList.count currentBonesCloneArray.count skinMeshCloneTheLastofBonesList.count
-							
-							local skinWeightMesh = SE_AAH_CreateWeightMesh cMCMLMesh
-							select cMCMLMesh
-							collapseStack cMCMLMesh
-							
-							unfreeze cMCMLMesh DoLayer:true
-							addModifier cMCMLMesh (Skin())
-							setCommandPanelTaskMode #modify
-							modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
-								
-							for currentBCloneANode in skinMeshCloneBonesList do
-							(
-								if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1
-							)
-							
-							clearselection()
-							select cMCMLMesh
-							selectmore skinWeightMesh
-							skinUtils.ImportSkinDataNoDialog true false false false false 1.0 0
-							
-							select cMCMLMesh
-							unfreeze cMCMLMesh DoLayer:true
-							setCommandPanelTaskMode #modify
-							modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
-							
-							for currentBCloneANode in skinMeshCloneTheLastofBonesList do
-							(
-								if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1 -- add the left bones after SkinUtils because of the stupid Max "Exception" error. But we need these bones to make our skins more stable in other programs like Blender.
-							)
-							
-							--cMCMLMesh.name = "SM_" + cMCMLMesh.name
-							cMCMLMesh.wirecolor = (color 255 144 0)
-							delete skinWeightMesh
-						)
-						
-						if chkbx_BASaveOriginal.state == false do
-						(
-							Process_Rollout.lbl_PrcssAAH.text = "Deleting old hierarchy..."
-							Process_Rollout.prgb_AAH.value = 90
-							try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-							
-							for currentBonesDNode in currentBones do
-							(
-								if chkbx_BATransferObjects.state == false or ClassOf currentBonesDNode == point or ClassOf currentBonesDNode == bone or ClassOf currentBonesDNode == dummy do
-								(
-									delete currentBonesDNode
-								)
-							)
-							try (LayerManager.deleteLayerByName oldBonesLayer.name) catch()
-						)
-						
-						select currentBonesCloneArray[1]
-						
-						Process_Rollout.lbl_PrcssAAH.text = "Bone adaptation finished!"
-						Process_Rollout.prgb_AAH.value = 0
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 						ProcessUpdateFreezeTrigger = false
 						
-						local info_str_msg = "Character adaptation finished!\n\nAdapted meshes: " + currentMeshes.count as string + "\nAdapted bones: " + currentBonesCloneArray.count as string
+						local info_str_msg = "Character adaptation finished!\n\nAdapted meshes: " + currentMeshes.count as string + "\nAdapted bones: " + adBnsCount as string
 						messagebox info_str_msg title:"Done!"
 						
 					)
@@ -2795,143 +2832,15 @@ rollout Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				
 				if currentMeshes.count > 0 and currentBones.count > 0 then
 				(
-					adaptedBonesCount += currentBones.count
+					--adaptedBonesCount += currentBones.count
 					adaptedMeshesCount += currentMeshes.count
 					--local sHier = currentBones
 					--local info_str_msg = currentMeshes[1].name + ": Found meshes: " + currentMeshes.count as string + ", Found bones: " + currentBones.count as string
 					--messagebox info_str_msg title:"TEST!"
+					--local ShowDialoguesPerChar = false --show no dialogues per character
+					local adBnsCount = SE_AAH_AdaptBones currentMeshes currentBones chkbx_BATransferAnimation.state chkbx_BAResetScale.state chkbx_BATransferObjects.state chkbx_BASaveOriginal.state chkbx_BACleanModifiersList.state
 					
-					Process_Rollout.lbl_PrcssAAH.text = "Cloning hierarchy..."
-					Process_Rollout.prgb_AAH.value = 10
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					
-					if chkbx_BAResetScale.state == true do
-					(
-						for currentBonesRSNode in currentBones do
-						(
-							if ClassOf currentBonesRSNode == point or ClassOf currentBonesRSNode == bone or ClassOf currentBonesRSNode == dummy or chkbx_BATransferObjects.state == false do
-							(
-								if currentBonesRSNode != currentBones[1] do in coordsys parent currentBonesRSNode.scale = [1,1,1]
-							)
-						)
-						
-					)
-					SE_AAH_SetBonesIndexesnTypes currentBones
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					
-					local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false chkbx_BATransferObjects.state -- make a clone of the hierarchy with array of new helpers and new rotations
-					Process_Rollout.lbl_PrcssAAH.text = "Layers preparation..."
-					Process_Rollout.prgb_AAH.value = 20
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					
-					local newLayerName
-					local oldBonesLayer = SE_AAH_GetUniqueHierarchyLayer currentBones -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
-					if oldBonesLayer == -1 or oldBonesLayer == -2 then
-					(
-						oldBonesLayer = SE_AAH_CreateLayerForHierarchy currentBones ("Bones " + currentBones[1].name + " old layer")
-						newLayerName = ("Bones " + currentBones[1].name + " clone layer")
-					)
-					else newLayerName = (oldBonesLayer.name + " clone layer")
-					oldBonesLayer.isHidden = true
-					local cHLayer = SE_AAH_CreateLayerForHierarchy currentBonesCloneArray newLayerName
-					Process_Rollout.lbl_PrcssAAH.text = "Bone rotations calculation..."
-					Process_Rollout.prgb_AAH.value = 30
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					
-					SE_AAH_CalculateBonesRotations currentBonesCloneArray  
-					Process_Rollout.lbl_PrcssAAH.text = "Animation transfering..."
-					Process_Rollout.prgb_AAH.value = 40
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					
-					if chkbx_BATransferAnimation.state == true do SE_AAH_TransferAnimation currentBones currentBonesCloneArray chkbx_BATransferObjects.state
-					currentBonesCloneArray = GetAllHierarchy currentBonesCloneArray[1] 0 -- reasigning the array cause of the possible changings after SE_AAH_TransferAnimation
-					
-					if chkbx_BACleanModifiersList.state == true do
-					(
-						Process_Rollout.lbl_PrcssAAH.text = "Cleaning modifier list..."
-						Process_Rollout.prgb_AAH.value = 60
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						for cMCMLMesh in currentMeshes do
-						(
-							if cMCMLMesh.modifiers.count > 0 do
-							(
-								for m in cMCMLMesh.modifiers do
-								(
-									if iskindof m Edit_Mesh or iskindof m Edit_Poly or iskindof m Skin then format "%: Found modifier: %\n" cMCMLMesh.name m.name
-									else deleteModifier cMCMLMesh m
-								)
-							)
-						)
-					)
-					
-					Process_Rollout.lbl_PrcssAAH.text = "Transfering bones' weights..."
-					Process_Rollout.prgb_AAH.value = 70
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					
-					for cMCMLMesh in currentMeshes do
-					(
-						local skinMeshBonesList = SE_AAH_GetSkinMeshBones cMCMLMesh --currentBonesTemp
-						local skinMeshCloneBonesList = SE_AAH_GetSkinMeshClonedBones skinMeshBonesList currentBonesCloneArray
-						local skinMeshCloneTheLastofBonesList = SE_AAH_GetSkinMeshLastLeftClonedBones currentBonesCloneArray skinMeshCloneBonesList
-						format "skinMeshBonesList: %, skinMeshCloneBonesList: %, currentBonesCloneArray: %, skinMeshCloneTheLastofBonesList: %\n" skinMeshBonesList.count skinMeshCloneBonesList.count currentBonesCloneArray.count skinMeshCloneTheLastofBonesList.count
-						
-						local skinWeightMesh = SE_AAH_CreateWeightMesh cMCMLMesh
-						select cMCMLMesh
-						collapseStack cMCMLMesh
-						
-						unfreeze cMCMLMesh DoLayer:true
-						addModifier cMCMLMesh (Skin())
-						setCommandPanelTaskMode #modify
-						modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
-							
-						for currentBCloneANode in skinMeshCloneBonesList do
-						(
-							if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1
-						)
-						
-						clearselection()
-						select cMCMLMesh
-						selectmore skinWeightMesh
-						skinUtils.ImportSkinDataNoDialog true false false false false 1.0 0
-						
-						select cMCMLMesh
-						unfreeze cMCMLMesh DoLayer:true
-						setCommandPanelTaskMode #modify
-						modPanel.setCurrentObject cMCMLMesh.skin --cMCMLMesh.modifiers[#Skin]
-						
-						for currentBCloneANode in skinMeshCloneTheLastofBonesList do
-						(
-							if currentBCloneANode != undefined do skinOps.addbone cMCMLMesh.modifiers[1] currentBCloneANode 1 -- add the left bones after SkinUtils because of the stupid Max "Exception" error. But we need these bones to make our skins more stable in other programs like Blender.
-						)
-						
-						--cMCMLMesh.name = "SM_" + cMCMLMesh.name
-						cMCMLMesh.wirecolor = (color 255 144 0)
-						delete skinWeightMesh
-					)
-					
-					if chkbx_BASaveOriginal.state == false do
-					(
-						Process_Rollout.lbl_PrcssAAH.text = "Deleting old hierarchy..."
-						Process_Rollout.prgb_AAH.value = 90
-						try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-						
-						for currentBonesDNode in currentBones do
-						(
-							if chkbx_BATransferObjects.state == false or ClassOf currentBonesDNode == point or ClassOf currentBonesDNode == bone or ClassOf currentBonesDNode == dummy do
-							(
-								delete currentBonesDNode
-							)
-						)
-						try (LayerManager.deleteLayerByName oldBonesLayer.name) catch()
-					)
-					
-					--select currentBonesCloneArray[1]
-					
-					Process_Rollout.lbl_PrcssAAH.text = "Bone adaptation finished!"
-					Process_Rollout.prgb_AAH.value = 0
-					try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
-					ProcessUpdateFreezeTrigger = false
-					
+					adaptedBonesCount += adBnsCount
 					adaptedCharactersCount += 1
 					
 				)
@@ -7081,9 +6990,9 @@ rollout Info_Rollout "Extra Info" width:132 height:30
 		button AboutButton "About" width:58 height:16 pos:[106,25] tooltip:"Push this button to see some extra info"
 	)
 	
-	rollout AboutDialog "Another Animation Helper v.0.988b" width:275 height:315
+	rollout AboutDialog "Another Animation Helper v.0.989b" width:275 height:315
 	(
-		label abd1 "\"Another Animation Helper\" v.0.988b (Open Beta)" align:#left
+		label abd1 "\"Another Animation Helper\" v.0.989b (Open Beta)" align:#left
 		label abd2 ""
 		label abd3 "Made by Shagg_E, 2017-2023:" align:#left
 		HyperLink github "https://github.com/ShaggEw/AnotherAnimationHelper" address:"https://github.com/ShaggEw/AnotherAnimationHelper" color: (color 191 76 0) hovercolor:(color 255 106 0) visitedcolor:(color 127 51 0)
