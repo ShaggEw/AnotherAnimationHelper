@@ -1,7 +1,7 @@
-/**************************************************************************************************************************
-// Another Animation Helper v0.993b
+/************************************************************************************************************************************************
+// Another Animation Helper v0.994b
 // This script was made by Shagg_E, 2017-2026
-**************************************************************************************************************************/
+************************************************************************************************************************************************/
 
 global NewBH_Number = 1000
 global NewHI_Number = 0
@@ -20,17 +20,22 @@ global SE_AAH_Anim_Adapt_Rollout
 callbacks.removeScripts id:#se_aah_aahaaupdate
 
 --callbacks.removeScripts id:#se_aah_boneidsupdate
-global DrawBoneIDsTrigger = false
-unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+global SE_AAH_AutoSubIDSetToolEnabled = false
+global SE_AAH_ManualSubIDSetToolEnabled = false
+global SE_AAH_DrawSubIDsTrigger = false
+global SE_AAH_DrawSubIDType = 1
+unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
 
 global SE_AAH_ProcessUpdateFreezeTrigger = false
 
+try (DestroyDialog AutoSubIDSetTool) catch()
 try (DestroyDialog ManualSubIDSetTool) catch()
 try (DestroyDialog AboutDialog) catch()
 
 global ACAnimRangeStartKeyframe = undefined
 global ACAnimRangeEndKeyframe = undefined
 
+struct HierarchyAnalyseInfo (hierAA, subAA, hierKams, subKams, hierSeggaeman, subSeggaeman, hieraap, subaap)
 struct HierarchyFinalBoneCalc (hFBoneLevel, hFCurrentBone)
 struct AdaptedHierarchyInfo (adaptedMeshes, adaptedBones)
 
@@ -102,9 +107,9 @@ fn SE_AAH_UpdateAnimRangeStartAndEnd sHier animKeysRangeType posKeysTrigger rotK
 					)
 				)
 			)
-			if rotKeysTrigger == true do
+			if rotKeysTrigger == true or rollKeysTrigger == true do
 			(
-				if s.target != undefined then --ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera
+				if s.target != undefined and rollKeysTrigger == true then --ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera
 				(
 					if s.controller.roll_angle.controller.keys.count > 0 do
 					(
@@ -126,7 +131,7 @@ fn SE_AAH_UpdateAnimRangeStartAndEnd sHier animKeysRangeType posKeysTrigger rotK
 						)
 					)
 				)
-				else if s.rotation.controller.keys.count > 0 do
+				else if rotKeysTrigger == true and s.rotation.controller.keys.count > 0 do
 				(
 					for i = 1 to s.rotation.controller.keys.count do
 					(
@@ -163,6 +168,28 @@ fn SE_AAH_UpdateAnimRangeStartAndEnd sHier animKeysRangeType posKeysTrigger rotK
 							if ACAnimRangeEndKeyframe < s.scale.controller.keys[i].time do ACAnimRangeEndKeyframe = s.scale.controller.keys[i].time
 						)
 						else ACAnimRangeEndKeyframe = s.scale.controller.keys[i].time
+					)
+				)
+			)
+			if fovKeysTrigger == true and (ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera or ClassOf s == freecamera) do
+			(
+				if s.FOV.controller.keys.count > 0 do
+				(
+					for i = 1 to s.FOV.controller.keys.count do
+					(
+						if animKeysRangeType == 1 or (animKeysRangeType == 3 and isKeySelected s.FOV.controller i) do
+						(
+							if ACAnimRangeStartKeyframe != undefined then
+							(
+								if ACAnimRangeStartKeyframe > s.FOV.controller.keys[i].time do ACAnimRangeStartKeyframe = s.FOV.controller.keys[i].time
+							)
+							else ACAnimRangeStartKeyframe = s.FOV.controller.keys[i].time
+							if ACAnimRangeEndKeyframe != undefined then
+							(
+								if ACAnimRangeEndKeyframe < s.FOV.controller.keys[i].time do ACAnimRangeEndKeyframe = s.FOV.controller.keys[i].time
+							)
+							else ACAnimRangeEndKeyframe = s.FOV.controller.keys[i].time
+						)
 					)
 				)
 			)
@@ -359,6 +386,12 @@ fn SE_AAH_GetAndOffAnimKeys =
 	return aKStateG
 )
 
+fn SE_AAH_SetOffAnimKeys =
+(
+	animButtonState = false
+	maxOps.setKeyMode = false
+)
+
 fn SE_AAH_SetBackAnimKeys aKStateS =
 (
 	animButtonState = false
@@ -487,21 +520,157 @@ fn SE_AAH_GetFinalBone objBone =
 	return gFB.hFCurrentBone
 )
 
-fn SE_AAH_GetSubID gSINode =
+fn SE_AAH_GetSubID subIDType gSINode =
 (
 	local nodeSubID = -1
-	if getUserProp gSINode "BoneID" != undefined or getUserProp gSINode "BoneId" != undefined or getUserProp gSINode "SubID" != undefined do
+	if subIDType == 0 then -- in this case, we trying to get any type of this ID parameter, in special order (SubID > BoneID > BoneId > tag)
 	(
-		if getUserProp gSINode "BoneID" != undefined  then nodeSubID = getUserProp gSINode "BoneID"
-		else if getUserProp gSINode "BoneId" != undefined  then nodeSubID = getUserProp gSINode "BoneId"
-		else nodeSubID = getUserProp gSINode "SubID"
+		if getUserProp gSINode "SubID" != undefined or getUserProp gSINode "BoneID" != undefined or getUserProp gSINode "BoneId" != undefined or getUserProp gSINode "tag" != undefined do
+		(
+			if getUserProp gSINode "SubID" != undefined then nodeSubID = getUserProp gSINode "SubID" -- AA scripts
+			else if getUserProp gSINode "BoneID" != undefined then nodeSubID = getUserProp gSINode "BoneID" -- Kam's scripts
+			else if getUserProp gSINode "BoneId" != undefined then nodeSubID = getUserProp gSINode "BoneId" -- Seggaeman's DFF plugin
+			else if getUserProp gSINode "tag" != undefined do nodeSubID = getUserProp gSINode "tag" -- The Hero/aap's DFF plugin
+		)
+	)
+	else -- in this case, we only get the selected type of ID parameter
+	(
+		if subIDType == 1 and getUserProp gSINode "SubID" != undefined then nodeSubID = getUserProp gSINode "SubID" -- AA scripts
+		else if subIDType == 2 and getUserProp gSINode "BoneID" != undefined then nodeSubID = getUserProp gSINode "BoneID" -- Kam's scripts
+		else if subIDType == 3 and getUserProp gSINode "BoneId" != undefined then nodeSubID = getUserProp gSINode "BoneId" -- Seggaeman's DFF plugin
+		else if subIDType == 4 and getUserProp gSINode "tag" != undefined do nodeSubID = getUserProp gSINode "tag" -- The Hero/aap's DFF plugin
 	)
 	return nodeSubID
+)
+
+fn SE_AAH_CheckAndFindFreeSubID sH startID =
+(
+	local finalID = startID
+	local freeBoneIDTrigger = true
+	for nrtbnHierNode in sH while freeBoneIDTrigger == true do
+	(
+		if finalID == (SE_AAH_GetSubID 0 nrtbnHierNode) do
+		(
+			freeBoneIDTrigger = false
+		)
+	)
+	if freeBoneIDTrigger == false do
+	(
+		freeBoneIDTrigger = true
+		do -- trying to predict optimal SubID value depending on the free SubIDs in the hierarchy
+		(
+			freeBoneIDTrigger = true
+			for nrtbnHierNode in sH while freeBoneIDTrigger == true do
+			(
+				if finalID == (SE_AAH_GetSubID 0 nrtbnHierNode) do
+				(
+					finalID = finalID + 1
+					freeBoneIDTrigger = false
+				)
+			)
+		)
+		while freeBoneIDTrigger == false
+	)
+	return finalID
 )
 
 fn SE_AAH_ResetBonesIndexes sHierNow =
 (
 	for s in sHierNow do setUserProp s "BoneIndex" -1
+)
+
+fn SE_AAH_CheckBonesIndexesnTypes sHierNow =
+(
+	local indexesExists = true
+	local indexesCheck = true
+	local typesCheck = true
+	local resultCheck = 0
+	local newBoneIndex = 0
+	for s in sHierNow do
+	(
+		if getUserProp s "BoneIndex" != undefined then
+		(
+			if getUserProp s "BoneIndex" != newBoneIndex do indexesCheck = false
+			--setUserProp s "BoneIndex" newBoneIndex
+		)
+		else
+		(
+			indexesExists = false
+			indexesCheck = false
+		)
+		newBoneIndex = newBoneIndex + 1
+	)
+	local a = #()
+	local childrenLevel = 0
+	local previousBoneIndex = 0
+	if indexesExists == true then
+	(
+		for s in sHierNow do
+		(
+			if getUserProp s "BoneType" == undefined do typesCheck = false
+		)
+		if typesCheck == true do
+		(
+			for s in sHierNow do
+			(
+				local p = s.parent
+				if p == undefined then
+				(
+					if getUserProp s "BoneType" != 0 do typesCheck = false --// is the last or only child, has children
+					--setUserProp s "BoneType" "0" --// is the last or only child, has children
+				)
+				else
+				(
+					if getUserProp p "BoneIndex" == previousBoneIndex then
+					(
+						childrenLevel = childrenLevel + 1
+						a[childrenLevel*3+1] = 0
+						a[childrenLevel*3+3] = getUserProp p "BoneIndex"
+					)
+					else
+					(
+						while getUserProp p "BoneIndex" != a[childrenLevel*3+3] do
+						(
+							childrenLevel = childrenLevel - 1
+						)
+					)
+					a[childrenLevel*3+1] = a[childrenLevel*3+1] + 1
+					a[childrenLevel*3+2] = getUserProp p "BoneIndex"
+					if a[childrenLevel*3+1] == p.children.count then
+					(
+						if s.children.count == 0 then
+						(
+							if getUserProp s "BoneType" != 1 do typesCheck = false --// is the last or only child, hasn't children
+							--setUserProp s "BoneType" "1" --// is the last or only child, hasn't children
+						)
+						else
+						(
+							if getUserProp s "BoneType" != 0 do typesCheck = false --// is the last or only child, has children
+							--setUserProp s "BoneType" "0" --// is the last or only child, has children
+						)
+					)
+					else
+					(
+						if s.children.count == 0 then
+						(
+							if getUserProp s "BoneType" != 3 do typesCheck = false --// not the only and not last child, hasn't children
+							--setUserProp s "BoneType" "3" --// not the only and not last child, hasn't children
+						)
+						else
+						(
+							if getUserProp s "BoneType" != 2 do typesCheck = false --// not the only and not last child, has children
+							--setUserProp s "BoneType" "2" --// not the only and not last child, has children
+						)
+					)
+					previousBoneIndex = getUserProp s "BoneIndex"
+				)
+			)
+		)
+	)
+	else typesCheck = false
+	if indexesCheck == true do resultCheck = resultCheck + 1
+	if typesCheck == true do resultCheck = resultCheck + 10
+	return resultCheck
 )
 
 fn SE_AAH_SetBonesIndexesnTypes sHierNow =
@@ -564,6 +733,240 @@ fn SE_AAH_SetBonesIndexesnTypes sHierNow =
 			previousBoneIndex = getUserProp s "BoneIndex"
 		)
 	)
+)
+
+fn SE_AAH_CheckSubIDParams sH subIDName =
+(
+	local totalSubIDParams = 0
+	for sHBone in sH do
+	(
+		if getUserProp sHBone subIDName != undefined do totalSubIDParams = totalSubIDParams + 1
+	)
+	return totalSubIDParams
+)
+
+fn SE_AAH_CheckUniqueSubIDParams sH subIDName =
+(
+	local totalUniqueSubIDParams = 0
+	for sHBone in sH do
+	(
+		if getUserProp sHBone subIDName != undefined do
+		(
+			local sHBoneSubID = getUserProp sHBone subIDName
+			local sHBoneSubIDIsUnique = true
+			for sHBone2 in sH while sHBoneSubIDIsUnique == true do
+			(
+				if getUserProp sHBone2 subIDName != undefined do
+				(
+					local sHBone2SubID = getUserProp sHBone2 subIDName
+					if sHBone != sHBone2 and sHBoneSubID == sHBone2SubID do sHBoneSubIDIsUnique = false
+				)
+			)
+			if sHBoneSubIDIsUnique == true do totalUniqueSubIDParams = totalUniqueSubIDParams + 1
+		)
+	)
+	return totalUniqueSubIDParams
+)
+
+fn SE_AAH_CheckIfSubIDIsCorrect sH subIDName =
+(
+	local checkResult = false
+	local boneIDsCount = SE_AAH_CheckSubIDParams sH subIDName
+	local boneIDsUniqueCount = SE_AAH_CheckUniqueSubIDParams sH subIDName
+	if sH.count == boneIDsCount and sH.count == boneIDsUniqueCount do checkResult = true
+	return checkResult
+)
+
+fn SE_AAH_AnalyseHierarchy obj showMessage =
+(
+	local sHier = SE_AAH_GetAllHierarchy obj 0
+	local info_str_msg = "Total bones in hierarchy: " + sHier.count as string
+	
+	info_str_msg = info_str_msg + "\n\nAA scripts hierarchy:"
+	local boneIDsCount = SE_AAH_CheckSubIDParams sHier "SubID"
+	info_str_msg = info_str_msg + "\nTotal SubIDs params set: " + boneIDsCount as string
+	local boneIDsUniqueCount = SE_AAH_CheckUniqueSubIDParams sHier "SubID"
+	info_str_msg = info_str_msg + "\nTotal Unique SubIDs params set: " + boneIDsUniqueCount as string
+	local finalSubIDsResult = false
+	if sHier.count ==  boneIDsCount and sHier.count == boneIDsUniqueCount do finalSubIDsResult = true
+	info_str_msg = info_str_msg + "\nSubID parameters: "
+	if finalSubIDsResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	info_str_msg = info_str_msg + "\n\nKam's scripts hierarchy:"
+	boneIDsCount = SE_AAH_CheckSubIDParams sHier "BoneID"
+	info_str_msg = info_str_msg + "\nTotal BoneIDs params set: " + boneIDsCount as string
+	boneIDsUniqueCount = SE_AAH_CheckUniqueSubIDParams sHier "BoneID"
+	info_str_msg = info_str_msg + "\nTotal Unique BoneIDs params set: " + boneIDsUniqueCount as string
+	local finalBoneIDsResult = false
+	if sHier.count ==  boneIDsCount and sHier.count == boneIDsUniqueCount do finalBoneIDsResult = true
+	info_str_msg = info_str_msg + "\nBoneID parameters: "
+	if finalBoneIDsResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	local sSPunknown = getUserProp sHier[1] "SPunknown"
+	local sSPunknownKamsFinalResult = false
+	info_str_msg = info_str_msg + "\n\nSPunknown parameter: "
+	if sSPunknown == undefined then info_str_msg = info_str_msg + "UNKNOWN!!!\n(may produce character's export problems)"
+	else
+	(
+		sSPunknownKamsFinalResult = true
+		info_str_msg = info_str_msg + sSPunknown as string
+		if sSPunknown == 0 then	info_str_msg = info_str_msg + "\n(VC character)"
+		else if sSPunknown == 4 or sSPunknown == 3 then info_str_msg = info_str_msg + "\n(SA character)"
+		else
+		(
+			sSPunknownKamsFinalResult = false
+			info_str_msg = info_str_msg + "\n(unknown, may, or may not produce character's export problems)"
+		)
+	)
+	
+	info_str_msg = info_str_msg + "\n\nSeggaeman's DFF plugin hierarchy:"
+	boneIDsCount = SE_AAH_CheckSubIDParams sHier "BoneId"
+	info_str_msg = info_str_msg + "\nTotal BoneIds params set: " + boneIDsCount as string
+	boneIDsUniqueCount = SE_AAH_CheckUniqueSubIDParams sHier "BoneId"
+	info_str_msg = info_str_msg + "\nTotal Unique BoneIds params set: " + boneIDsUniqueCount as string
+	local finalBoneIdsSeggaemanResult = false
+	if sHier.count ==  boneIDsCount and sHier.count == boneIDsUniqueCount do finalBoneIdsSeggaemanResult = true
+	info_str_msg = info_str_msg + "\nBoneId parameters: "
+	if finalBoneIdsSeggaemanResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	local checkBonesIndexesnTypesResult = SE_AAH_CheckBonesIndexesnTypes sHier
+	info_str_msg = info_str_msg + "\n\nBoneIndex parameters: "
+	if checkBonesIndexesnTypesResult ==  1 or checkBonesIndexesnTypesResult ==  11 then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!" -- (" + checkBonesIndexesnTypesResult as string + ")"
+	
+	info_str_msg = info_str_msg + "\n\nBoneType parameters: "
+	if checkBonesIndexesnTypesResult ==  10 or checkBonesIndexesnTypesResult ==  11 then info_str_msg = info_str_msg + "CORRECT!" --+ checkBonesIndexesnTypesResult as string
+	else info_str_msg = info_str_msg + "INCORRECT!!!" -- (" + checkBonesIndexesnTypesResult as string + ")"
+	
+	info_str_msg = info_str_msg + "\n\nThe Hero/aap's DFF plugin hierarchy:"
+	boneIDsCount = SE_AAH_CheckSubIDParams sHier "tag"
+	info_str_msg = info_str_msg + "\nTotal tags params set: " + boneIDsCount as string
+	boneIDsUniqueCount = SE_AAH_CheckUniqueSubIDParams sHier "tag"
+	info_str_msg = info_str_msg + "\nTotal Unique tags params set: " + boneIDsUniqueCount as string
+	local finaltagResult = false
+	if sHier.count ==  boneIDsCount and sHier.count == boneIDsUniqueCount do finaltagResult = true
+	info_str_msg = info_str_msg + "\ntag parameters: "
+	if finaltagResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	-- also, it's better to check aap's childNum parameters, but I can't test skin export on this plugin: it's not working!
+	
+	info_str_msg = info_str_msg + "\n\n\nRESULTS:"
+	
+	local hierAAFinalResult = false
+	if finalSubIDsResult == true and checkBonesIndexesnTypesResult == 11 do hierAAFinalResult = true
+	info_str_msg = info_str_msg + "\n\nAA scripts hierarchy: "
+	if hierAAFinalResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	local hierKamsFinalResult = false
+	if finalBoneIDsResult == true and checkBonesIndexesnTypesResult == 11 and sSPunknownKamsFinalResult == true do hierKamsFinalResult = true
+	info_str_msg = info_str_msg + "\n\nKam's scripts hierarchy: "
+	if hierKamsFinalResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	local hierSeggaemansFinalResult = false
+	if finalBoneIdsSeggaemanResult == true and checkBonesIndexesnTypesResult == 11 do hierSeggaemansFinalResult = true
+	info_str_msg = info_str_msg + "\n\nSeggaeman's DFF plugin hierarchy: "
+	if hierSeggaemansFinalResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	local hieraapsFinalResult = false
+	if finaltagResult == true do hieraapsFinalResult = true
+	info_str_msg = info_str_msg + "\n\nThe Hero/aap's DFF plugin hierarchy: "
+	if hieraapsFinalResult == true then info_str_msg = info_str_msg + "CORRECT!"
+	else info_str_msg = info_str_msg + "INCORRECT!!!"
+	
+	if hierAAFinalResult == true and hierKamsFinalResult == true and hierSeggaemansFinalResult == true and hieraapsFinalResult == true then info_str_msg = info_str_msg + "\n\n\nYour character's hierarchy is just FINE!\n\n\nHave fun!!!"
+	else
+	(
+		info_str_msg = info_str_msg + "\n\n\nTIPS:"
+		if checkBonesIndexesnTypesResult != 11 then info_str_msg = info_str_msg + "\n\nRecalculate Bone Indexes and Types with the relevant Calculation tool, to prepare it for Kam's scripts and Seggaeman's DFF plugin export process."
+		else info_str_msg = info_str_msg + "\n\nBone Indexes and Types are just FINE for Kam's scripts and Seggaeman's DFF plugin, and ready for character's export."
+		if sSPunknownKamsFinalResult == true then
+		(
+			info_str_msg = info_str_msg + "\n\nSPunknown parameter is just FINE for Kam's scripts and ready for "
+			if sSPunknown == 0 then	info_str_msg = info_str_msg + "VC character's export."
+			else if sSPunknown == 4 or sSPunknown == 3 then info_str_msg = info_str_msg + "SA character's export."
+		)
+		else info_str_msg = info_str_msg + "\n\nSPunknown parameter is UNKNOWN and may produce character's export problems in Kam's scripts.\nUse Bone Indexes and Types' Calculation tool to set it automatically, or set it to the Root bone's Properties manually."
+		if finalSubIDsResult == true and finalBoneIDsResult == true and finalBoneIdsSeggaemanResult == true and finaltagResult == true then info_str_msg = info_str_msg + "\n\nSubID/BoneID/BoneId/Tag parameters are just FINE and ready for character's export."
+		else
+		(
+			if finalSubIDsResult == false and finalBoneIDsResult == false and finalBoneIdsSeggaemanResult == false and finaltagResult == false then info_str_msg = info_str_msg + "\n\nALL the SubID/BoneID/BoneId/Tag parameters are WRONG, set them manually in the correct way or recalculate them with the relevant Auto.../Calculation tool."
+			else
+			(
+				info_str_msg = info_str_msg + "\n\nSOME SubID/BoneID/BoneId/Tag parameters are WRONG, use the relemant tool to Auto.../Unify them by one of these:"
+				if finalSubIDsResult == true do info_str_msg = info_str_msg + "\n- AA's SubID"
+				if finalBoneIDsResult == true do info_str_msg = info_str_msg + "\n- Kam's BoneID"
+				if finalBoneIdsSeggaemanResult == true do info_str_msg = info_str_msg + "\n- Seggaeman's BoneId"
+				if finaltagResult == true do info_str_msg = info_str_msg + "\n- aap's tag"
+			)
+		)
+		info_str_msg = info_str_msg + "\n\n\nYou can do it!!!"
+	)
+	if showMessage == true do messagebox info_str_msg title:"SubID / BoneID / Tag analyse result:"
+	return HierarchyAnalyseInfo hierAAFinalResult finalSubIDsResult hierKamsFinalResult finalBoneIDsResult hierSeggaemansFinalResult finalBoneIdsSeggaemanResult hieraapsFinalResult finaltagResult
+)
+
+fn SE_AAH_UnifySubIDParamsFinally subIDType subIDName subIDMain subID1 subID2 subID3 showMessages =
+(
+	local finalHierAnalyseInfo = SE_AAH_AnalyseHierarchy selection[1] false -- hierAA, subAA, hierKams, subKams, hierSeggaeman, subSeggaeman, hieraap, subaap
+	local isEverythingReady = false
+	local subIDWereSet = 0
+	if subIDType == 1 then
+	(
+		if finalHierAnalyseInfo.subAA == true do isEverythingReady = true
+	)
+	else if subIDType == 2 then
+	(
+		if finalHierAnalyseInfo.subKams == true do isEverythingReady = true
+	)
+	else if subIDType == 3 then
+	(
+		if finalHierAnalyseInfo.subSeggaeman == true do isEverythingReady = true
+	)
+	else if subIDType == 4 do
+	(
+		if finalHierAnalyseInfo.subaap == true do isEverythingReady = true
+	)
+	local info_str_msg = subIDName
+	if isEverythingReady == false do
+	(
+		if showMessages == true then
+		(
+			info_str_msg = subIDName + " parameters are WRONG!\nAre SURE you want to CONTINUE?"
+			if (queryBox info_str_msg title:"ATTENTION") do
+			(
+				isEverythingReady = true
+			)
+		)
+		else isEverythingReady = true
+	)
+	if isEverythingReady == true then
+	(
+		local sHier = SE_AAH_GetAllHierarchy selection[1] 0
+		for s in sHier do
+		(
+			local unifyPropSubID = getUserProp s subIDMain
+			if unifyPropSubID != undefined do
+			(
+				setUserProp s subID1 unifyPropSubID
+				setUserProp s subID2 unifyPropSubID
+				setUserProp s subID3 unifyPropSubID
+				subIDWereSet = subIDWereSet + 1
+			)
+		)
+		if showMessages == true do
+		(
+			info_str_msg = "Unify process is finished!\nTotal bones in hierarchy: " + sHier.count as string + "\nTotal converted bones: " + subIDWereSet as string
+			messageBox info_str_msg title:"DONE!"
+		)
+	)
+	else if showMessages == true do messageBox "Canceled!" title:"ERROR"
 )
 
 fn SE_AAH_GetBoundingBoxOfHierarchy sHier =
@@ -900,9 +1303,125 @@ fn SE_AAH_GetHierarchyFacingVector sHier fullBB =
 	)
 )
 
-fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTrigger transferObjectsTrigger = -- works only when BoneIndexes are calculated properly!
+fn SE_AAH_MirrorObjectsTransformRelativelyToAnotherObjectsTransform obj targetObj mirrorAxis mirrorRotations =
+(
+	local sHierUltimateTempObj = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue
+	local sHierUltimateTempTarget = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue
+	sHierUltimateTempObj.transform = obj.transform
+	sHierUltimateTempObj.transform = obj.transform
+	sHierUltimateTempTarget.transform = targetObj.transform
+	sHierUltimateTempTarget.transform = targetObj.transform
+	in coordsys world sHierUltimateTempTarget.rotation.x_rotation = 0.0
+	in coordsys world sHierUltimateTempTarget.rotation.y_rotation = 0.0
+	in coordsys world sHierUltimateTempTarget.rotation.z_rotation = 0.0
+	in coordsys world sHierUltimateTempTarget.rotation.x_rotation = 0.0
+	in coordsys world sHierUltimateTempTarget.rotation.y_rotation = 0.0
+	in coordsys world sHierUltimateTempTarget.rotation.z_rotation = 0.0
+	sHierUltimateTempObj.parent = sHierUltimateTempTarget
+	sHierUltimateTempTarget.position = [0.0,0.0,0.0]
+	sHierUltimateTempTarget.position = [0.0,0.0,0.0]
+	local newXPos = (in coordsys world sHierUltimateTempObj.position.x) * -1.0
+	local newYPos = (in coordsys world sHierUltimateTempObj.position.y) * -1.0
+	local newZPos = (in coordsys world sHierUltimateTempObj.position.z) * -1.0
+	local newXRot = (in coordsys world sHierUltimateTempObj.rotation.x_rotation) * -1.0
+	local newYRot = (in coordsys world sHierUltimateTempObj.rotation.y_rotation) * -1.0
+	local newZRot = (in coordsys world sHierUltimateTempObj.rotation.z_rotation) * -1.0
+	if mirrorAxis == 1 or mirrorAxis == 4 or mirrorAxis == 6 or mirrorAxis == 7 then
+	(
+		if mirrorRotations == true do
+		(
+			in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			in coordsys world sHierUltimateTempObj.rotation.z_rotation = newZRot
+			in coordsys world sHierUltimateTempObj.rotation.z_rotation = newZRot
+		)
+		sHierUltimateTempObj.position.x = newXPos
+		sHierUltimateTempObj.position.x = newXPos
+		if mirrorAxis == 4 or mirrorAxis == 7 do
+		(
+			if mirrorRotations == true do
+			(
+				newYRot = (in coordsys world sHierUltimateTempObj.rotation.y_rotation) * -1.0
+				newZRot = (in coordsys world sHierUltimateTempObj.rotation.z_rotation) * -1.0 - 180.0
+				in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+				in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+				in coordsys world sHierUltimateTempObj.rotation.z_rotation = newZRot
+				in coordsys world sHierUltimateTempObj.rotation.z_rotation = newZRot
+			)
+			sHierUltimateTempObj.position.y = newYPos
+			sHierUltimateTempObj.position.y = newYPos
+		)
+		if mirrorAxis == 6 or mirrorAxis == 7 do
+		(
+			if mirrorRotations == true do
+			(
+				newXRot = (in coordsys world sHierUltimateTempObj.rotation.x_rotation) * -1.0
+				newYRot = (in coordsys world sHierUltimateTempObj.rotation.y_rotation) * -1.0
+				in coordsys world sHierUltimateTempObj.rotation.x_rotation = newXRot
+				in coordsys world sHierUltimateTempObj.rotation.x_rotation = newXRot
+				in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+				in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			)
+			sHierUltimateTempObj.position.z = newZPos
+			sHierUltimateTempObj.position.z = newZPos
+		)
+	)
+	else if mirrorAxis == 2 or mirrorAxis == 5 then
+	(
+		if mirrorRotations == true do
+		(
+			local newZRot = newZRot - 180.0
+			in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			in coordsys world sHierUltimateTempObj.rotation.z_rotation = newZRot
+			in coordsys world sHierUltimateTempObj.rotation.z_rotation = newZRot
+		)
+		sHierUltimateTempObj.position.y = newYPos
+		sHierUltimateTempObj.position.y = newYPos
+		if mirrorAxis == 5 do
+		(
+			if mirrorRotations == true do
+			(
+				newXRot = (in coordsys world sHierUltimateTempObj.rotation.x_rotation) * -1.0
+				newYRot = (in coordsys world sHierUltimateTempObj.rotation.y_rotation) * -1.0
+				in coordsys world sHierUltimateTempObj.rotation.x_rotation = newXRot
+				in coordsys world sHierUltimateTempObj.rotation.x_rotation = newXRot
+				in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+				in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			)
+			sHierUltimateTempObj.position.z = newZPos
+			sHierUltimateTempObj.position.z = newZPos
+		)
+	)
+	else if mirrorAxis == 3 then
+	(
+		if mirrorRotations == true do
+		(
+			in coordsys world sHierUltimateTempObj.rotation.x_rotation = newXRot
+			in coordsys world sHierUltimateTempObj.rotation.x_rotation = newXRot
+			in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+			in coordsys world sHierUltimateTempObj.rotation.y_rotation = newYRot
+		)
+		sHierUltimateTempObj.position.z = newZPos
+		sHierUltimateTempObj.position.z = newZPos
+	)
+	sHierUltimateTempTarget.position = targetObj.position
+	sHierUltimateTempTarget.position = targetObj.position
+	obj.transform = sHierUltimateTempObj.transform
+	obj.transform = sHierUltimateTempObj.transform
+	delete sHierUltimateTempObj
+	delete sHierUltimateTempTarget
+)
+
+
+fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTrigger transferObjectsTrigger clonedAutoSetID clonedAutoSetIDInSeqOrder clonedMirror clonedMirrorRotations clonedMirrorAxis = -- works only when BoneIndexes are calculated properly!
 (
 	local clonedH = #()
+	local sHierTempCloneRoot
+	local sHierUltimateRoot = undefined
+	local sHierUltimateTempRoot = undefined
+	if sHierCurrentOne[1].parent != undefined then sHierUltimateRoot = sHierCurrentOne[1].parent
+	else sHierUltimateTempRoot = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue pos:[0.0,0.0,0.0]
 	if sHierDontReplaceBones == true then
 	(
 		sHierTempCloneRoot = copy sHierCurrentOne[1]
@@ -913,20 +1432,6 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 		sHierTempCloneRoot = dummy boxsize:([0.001,0.001,0.001]) wirecolor:blue --bone pos: [0.0,0.0,0.0] wirecolor:blue
 		if cloneTransformTrigger then sHierTempCloneRoot.transform = sHierCurrentOne[1].transform
 		else sHierTempCloneRoot.position = sHierCurrentOne[1].position
-		--in coordsys world sHierTempCloneRoot.position.x = in coordsys world sHierCurrentOne[1].position.x
-		--in coordsys world sHierTempCloneRoot.position.y = in coordsys world sHierCurrentOne[1].position.y
-		--in coordsys world sHierTempCloneRoot.position.z = in coordsys world sHierCurrentOne[1].position.z
-		--if cloneTransformTrigger do in coordsys world sHierTempCloneRoot.rotation = in coordsys world sHierCurrentOne[1].rotation
-		
-		/*		
-		ResetScale sHierTempCloneRoot -- mapped method
-		in coordsys world sHierTempCloneRoot.scale = [1,1,1]
-		local objTm= in coordsys parent sHierTempCloneRoot.transform
-		local objTmX=normalize objTm.row1
-		local objTmY=normalize objTm.row2
-		local objTmZ=normalize (cross objTmX objTmY) --Rebuild the Z to orthogonalize the matrix.
-		in coordsys parent sHierTempCloneRoot.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
-		*/
 	)
 	sHierTempCloneRoot.name = sHierCurrentOne[1].name
 	setUserPropBuffer sHierTempCloneRoot (getUserPropBuffer sHierCurrentOne[1])
@@ -935,19 +1440,40 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 	--sHierTempCloneRoot.baseobject = nrtbnTempDummy
 	if sHierDontReplaceBones == false do sHierTempCloneRoot.showLinks = true
 	--sHierTempCloneRoot.showLinksOnly = true
+	if clonedAutoSetID == true and sHierUltimateRoot != undefined do
+	(
+		if clonedAutoSetIDInSeqOrder == true do
+		(
+			local newClonedBoneID = (SE_AAH_GetSubID 0 sHierCurrentOne[1])
+			local newClonedHier = SE_AAH_GetAllHierarchy sHierCurrentOne[1] 0
+			if newClonedBoneID > -1 then newClonedBoneID = SE_AAH_CheckAndFindFreeSubID newClonedHier newClonedBoneID
+			else newClonedBoneID = SE_AAH_CheckAndFindFreeSubID newClonedHier 0
+			setUserProp sHierTempCloneRoot "SubID" newClonedBoneID
+			setUserProp sHierTempCloneRoot "BoneID" newClonedBoneID
+			setUserProp sHierTempCloneRoot "BoneId" newClonedBoneID
+			setUserProp sHierTempCloneRoot "tag" newClonedBoneID
+		)
+	)
+	
+	if clonedMirror == true do
+	(
+		if sHierUltimateRoot != undefined then SE_AAH_MirrorObjectsTransformRelativelyToAnotherObjectsTransform sHierTempCloneRoot sHierUltimateRoot clonedMirrorAxis clonedMirrorRotations
+		else SE_AAH_MirrorObjectsTransformRelativelyToAnotherObjectsTransform sHierTempCloneRoot sHierUltimateTempRoot clonedMirrorAxis clonedMirrorRotations
+	)
+	
 	append clonedH sHierTempCloneRoot
 	if sHierCurrentOne[1].parent != undefined do sHierTempCloneRoot.parent = sHierCurrentOne[1].parent
-	local sHierCurrentID
-	local sHierParentID
+	local sHierCurrentIndex
+	local sHierParentIndex
 	local sHierTempCloneMember
 	for sHierMember in sHierCurrentOne do
 	(
 		if sHierMember != sHierCurrentOne[1] do
 		(
-			sHierCurrentID = getUserProp sHierMember "BoneIndex"
-			if sHierCurrentID > 0 do
+			sHierCurrentIndex = getUserProp sHierMember "BoneIndex"
+			if sHierCurrentIndex > 0 do
 			(
-				sHierParentID = getUserProp sHierMember.parent "BoneIndex"
+				sHierParentIndex = getUserProp sHierMember.parent "BoneIndex"
 				--if transferObjectsTrigger == false or ClassOf sHierMember == point or ClassOf sHierMember == bone or ClassOf sHierMember == dummy then
 				--(
 					if sHierDontReplaceBones == true then
@@ -965,21 +1491,6 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 							setUserProp sHierMember "ClonedHierObject" 1
 							setUserProp sHierTempCloneMember "ClonedHierObject" 1
 						)
-						--in coordsys world sHierTempCloneMember.position.x = in coordsys world sHierMember.position.x
-						--in coordsys world sHierTempCloneMember.position.y = in coordsys world sHierMember.position.y
-						--in coordsys world sHierTempCloneMember.position.z = in coordsys world sHierMember.position.z
-						--if cloneTransformTrigger do in coordsys world sHierTempCloneMember.rotation = in coordsys world sHierMember.rotation
-						/*
-						ResetScale sHierTempCloneMember -- mapped method
-						in coordsys world sHierTempCloneMember.scale = [1,1,1]
-						local objTm= in coordsys parent sHierTempCloneMember.transform
-						local objTmX=normalize objTm.row1
-						local objTmY=normalize objTm.row2
-						local objTmZ=normalize (cross objTmX objTmY) --Rebuild the Z to orthogonalize the matrix.
-						in coordsys parent sHierTempCloneMember.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
-						*/
-						
-						
 					)
 					sHierTempCloneMember.name = sHierMember.name
 					setUserPropBuffer sHierTempCloneMember (getUserPropBuffer sHierMember)
@@ -987,6 +1498,29 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 					--sHierTempCloneMember.baseobject = nrtbnTempDummy
 					if sHierDontReplaceBones == false do sHierTempCloneMember.showLinks = true
 					--sHierTempCloneMember.showLinksOnly = true
+					
+					if clonedAutoSetID == true and sHierUltimateRoot != undefined do
+					(
+						if clonedAutoSetIDInSeqOrder == true do
+						(
+							local newClonedBoneID = (SE_AAH_GetSubID 0 sHierMember)
+							local newClonedHier = SE_AAH_GetAllHierarchy sHierMember 0
+							if newClonedBoneID > -1 then newClonedBoneID = SE_AAH_CheckAndFindFreeSubID newClonedHier newClonedBoneID
+							else newClonedBoneID = SE_AAH_CheckAndFindFreeSubID newClonedHier 0
+							setUserProp sHierTempCloneMember "SubID" newClonedBoneID
+							setUserProp sHierTempCloneMember "BoneID" newClonedBoneID
+							setUserProp sHierTempCloneMember "BoneId" newClonedBoneID
+							setUserProp sHierTempCloneMember "tag" newClonedBoneID
+						)
+					)		
+					
+					if clonedMirror == true do
+					(
+						if sHierUltimateRoot != undefined then SE_AAH_MirrorObjectsTransformRelativelyToAnotherObjectsTransform sHierTempCloneMember sHierUltimateRoot clonedMirrorAxis clonedMirrorRotations
+						else SE_AAH_MirrorObjectsTransformRelativelyToAnotherObjectsTransform sHierTempCloneMember sHierUltimateTempRoot clonedMirrorAxis clonedMirrorRotations
+					)
+					
+					
 				--)
 				--else sHierTempCloneMember = copy sHierMember --sHierTempCloneMember = sHierMember
 				--if transferObjectsTrigger == true and ClassOf sHierMember != point and ClassOf sHierMember != bone and ClassOf sHierMember != dummy do
@@ -995,13 +1529,14 @@ fn SE_AAH_CloneHierarchy sHierCurrentOne sHierDontReplaceBones cloneTransformTri
 				--)
 				for sHierTempCloneMemberParent in clonedH do
 				(
-					if getUserProp sHierTempCloneMemberParent "BoneIndex" == sHierParentID do sHierTempCloneMember.parent = sHierTempCloneMemberParent
+					if getUserProp sHierTempCloneMemberParent "BoneIndex" == sHierParentIndex do sHierTempCloneMember.parent = sHierTempCloneMemberParent
 				)
 				append clonedH sHierTempCloneMember
 			)
 		)
 	)
 	--delete nrtbnTempDummy
+	if sHierUltimateTempRoot != undefined do delete sHierUltimateTempRoot
 	return clonedH
 )
 
@@ -1085,8 +1620,37 @@ fn SE_AAH_GetUniqueHierarchyLayer sHierCurrentOne = -- -2 means impostor nodes i
 	return uniqueHierarchyLayer
 )
 
+fn SE_AAH_FindUniqueLayerName currentLayerName uniqueLayerNameID =
+(
+		uniqueLayerNameID = uniqueLayerNameID + 1
+		local uniqueLayerNameIDString = uniqueLayerNameID as string
+		if uniqueLayerNameID < 100 do
+		(
+			uniqueLayerNameIDString  = "0" + uniqueLayerNameIDString
+			if uniqueLayerNameID < 10 do
+			(
+				uniqueLayerNameIDString  = "0" + uniqueLayerNameIDString
+			)
+		)
+		local currentLayerNameTry = currentLayerName + uniqueLayerNameIDString
+		local bonesUniqueNameLayerTry = LayerManager.getLayerFromName currentLayerNameTry
+		if bonesUniqueNameLayerTry != undefined then
+		(
+			SE_AAH_FindUniqueLayerName currentLayerName uniqueLayerNameID
+		)
+		else
+		(
+			return currentLayerNameTry
+		)	
+)
+
 fn SE_AAH_CreateLayerForHierarchy sHier sHierLayerName = 
 (
+	local bonesUniqueNameLayerTry = LayerManager.getLayerFromName sHierLayerName
+	if bonesUniqueNameLayerTry != undefined do
+	(
+		sHierLayerName = SE_AAH_FindUniqueLayerName sHierLayerName 0 -- start with ID 0
+	)
 	local cHNewLayer = LayerManager.newLayer()
 	cHNewLayer.setname sHierLayerName
 	for cHBone in sHier do
@@ -1106,7 +1670,7 @@ fn SE_AAH_TransferAnimation sHier sHierCloneArray transferObjectsTrigger =
 		local AdoptRangeKeysCount = (((ACAnimRangeEndKeyframe - ACAnimRangeStartKeyframe) as float)/TicksPerFrame) as integer
 		if ACAnimRangeEndKeyframe > ACAnimRangeStartKeyframe then animationRange = interval ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe
 		else animationRange = interval 0.0 100.0
-		local sHierCloneTempArray = SE_AAH_CloneHierarchy sHierCloneArray false true false -- make a clone of the hierarchy with array of new helpers and copypasted rotations
+		local sHierCloneTempArray = SE_AAH_CloneHierarchy sHierCloneArray false true false false false false false 0 -- make a clone of the hierarchy with array of new helpers and copypasted rotations 
 		try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 		for sHNode in sHier do
 		(
@@ -1203,7 +1767,7 @@ fn SE_AAH_GetCharacterHierarchy obj =
 		SE_AAH_AppendAllChildren rootObj aH
 		for aHChild in aH do
 		(
-			local aHBoneId = SE_AAH_GetSubID aHChild
+			local aHBoneId = SE_AAH_GetSubID 0 aHChild
 			if aHBoneId != -1 do
 			(
 				if aHBoneId > 3 and aHBoneId < 14 do
@@ -1694,13 +2258,13 @@ fn SE_AAH_CheckHierBoneIDsMatch currentBones newBones matchBonesIndexesBTW =
 	)
 	for curBone in currentBones do
 	(
-		local curBoneBoneID = SE_AAH_GetSubID curBone
+		local curBoneBoneID = SE_AAH_GetSubID 0 curBone
 		if curBoneBoneID > -1 do
 		(
 			local matchFound = false
 			for nwBone in newBones while matchFound == false do
 			(
-				local nwBoneBoneID = SE_AAH_GetSubID nwBone
+				local nwBoneBoneID = SE_AAH_GetSubID 0 nwBone
 				if nwBoneBoneID > -1 do
 				(
 					if curBoneBoneID == nwBoneBoneID do
@@ -1758,7 +2322,7 @@ fn SE_AAH_CheckHierIndexesMatch currentBones newBones =
 						(
 							append matchedBones nwBone
 							nwBone.name = curBone.name
-							local curBoneBoneID = SE_AAH_GetSubID curBone
+							local curBoneBoneID = SE_AAH_GetSubID 0 curBone
 							if curBoneBoneID > -1 do
 							(
 								setUserProp nwBone "SubID" curBoneBoneID
@@ -1933,7 +2497,7 @@ fn SE_AAH_AdaptBones currentMeshes currentBones BATransferAnimation BAResetScale
 	SE_AAH_SetBonesIndexesnTypes currentBones
 	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
 	
-	local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false BATransferObjects -- make a clone of the hierarchy with array of new helpers and new rotations
+	local currentBonesCloneArray = SE_AAH_CloneHierarchy currentBones false false BATransferObjects false false false false 0 -- make a clone of the hierarchy with array of new helpers and new rotations
 	SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Layers preparation..."
 	SE_AAH_Process_Rollout.prgb_AAH.value = 20
 	try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
@@ -2062,36 +2626,91 @@ fn SE_AAH_RoundUp2 RValue RAccValue =
 	return ((ceil (RValue / RAccValue)) * RAccValue)
 )
 
-fn SE_AAH_CopyPasteTransform pickedTm TargetTm pos rot scl =
+fn SE_AAH_CopyPasteTransform pickedTm targetTm pos rot scl =
 (
-	if pos do pickedTm.row4 = TargetTm.row4
+	if pos do pickedTm.row4 = targetTm.row4
 	if rot then
 	(
 		if scl then
 		(
-			pickedTm.row1 = TargetTm.row1
-			pickedTm.row2 = TargetTm.row2
-			pickedTm.row3 = TargetTm.row3
+			pickedTm.row1 = targetTm.row1
+			pickedTm.row2 = targetTm.row2
+			pickedTm.row3 = targetTm.row3
 		)
 		else
 		(
-			pickedTm.row1 = (length pickedTm.row1) * normalize TargetTm.row1
-			pickedTm.row2 = (length pickedTm.row2) * normalize TargetTm.row2
-			pickedTm.row3 = (length pickedTm.row3) * normalize TargetTm.row3
+			pickedTm.row1 = (length pickedTm.row1) * normalize targetTm.row1
+			pickedTm.row2 = (length pickedTm.row2) * normalize targetTm.row2
+			pickedTm.row3 = (length pickedTm.row3) * normalize targetTm.row3
 		)
 	)
 	else if scl do
 	(
-		pickedTm.row1 = (normalize pickedTm.row1) * length TargetTm.row1
-		pickedTm.row2 = (normalize pickedTm.row2) * length TargetTm.row2
-		pickedTm.row3 = (normalize pickedTm.row3) * length TargetTm.row3
+		pickedTm.row1 = (normalize pickedTm.row1) * length targetTm.row1
+		pickedTm.row2 = (normalize pickedTm.row2) * length targetTm.row2
+		pickedTm.row3 = (normalize pickedTm.row3) * length targetTm.row3
 	)
 	return pickedTm
 )
 
-fn SE_AAH_ShowBoneIDsInViewport =
+fn SE_AAH_CopyPasteTransformToObject pickedObj targetTm parentCoords pos rot scl =
 (
-	if DrawBoneIDsTrigger do
+	if parentCoords == false then
+	(
+		if pos do pickedObj.transform.row4 = targetTm.row4
+		if rot then
+		(
+			if scl then
+			(
+				pickedObj.transform.row1 = targetTm.row1
+				pickedObj.transform.row2 = targetTm.row2
+				pickedObj.transform.row3 = targetTm.row3
+			)
+			else
+			(
+				pickedObj.transform.row1 = (length pickedObj.transform.row1) * normalize targetTm.row1
+				pickedObj.transform.row2 = (length pickedObj.transform.row2) * normalize targetTm.row2
+				pickedObj.transform.row3 = (length pickedObj.transform.row3) * normalize targetTm.row3
+			)
+		)
+		else if scl do
+		(
+			pickedObj.transform.row1 = (normalize pickedObj.transform.row1) * length targetTm.row1
+			pickedObj.transform.row2 = (normalize pickedObj.transform.row2) * length targetTm.row2
+			pickedObj.transform.row3 = (normalize pickedObj.transform.row3) * length targetTm.row3
+		)
+	)
+	else
+	(
+		if pos do in coordsys parent pickedObj.transform.row4 = targetTm.row4
+		if rot then
+		(
+			if scl then
+			(
+				in coordsys parent pickedObj.transform.row1 = targetTm.row1
+				in coordsys parent pickedObj.transform.row2 = targetTm.row2
+				in coordsys parent pickedObj.transform.row3 = targetTm.row3
+			)
+			else
+			(
+				in coordsys parent pickedObj.transform.row1 = (length (in coordsys parent pickedObj.transform.row1)) * normalize targetTm.row1
+				in coordsys parent pickedObj.transform.row2 = (length (in coordsys parent pickedObj.transform.row2)) * normalize targetTm.row2
+				in coordsys parent pickedObj.transform.row3 = (length (in coordsys parent pickedObj.transform.row3)) * normalize targetTm.row3
+			)
+		)
+		else if scl do
+		(
+			in coordsys parent pickedObj.transform.row1 = (normalize (in coordsys parent pickedObj.transform.row1)) * length targetTm.row1
+			in coordsys parent pickedObj.transform.row2 = (normalize (in coordsys parent pickedObj.transform.row2)) * length targetTm.row2
+			in coordsys parent pickedObj.transform.row3 = (normalize (in coordsys parent pickedObj.transform.row3)) * length targetTm.row3
+		)
+	)
+)
+
+
+fn SE_AAH_ShowSubIDsInViewport =
+(
+	if SE_AAH_DrawSubIDsTrigger do
 	(
 		gw.setTransform(Matrix3 1) -- set active viewport’s graphics window transformation matrix to the world matrix
 		if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) do
@@ -2099,9 +2718,9 @@ fn SE_AAH_ShowBoneIDsInViewport =
 			local sHierBI = SE_AAH_GetAllHierarchy selection[1] 0
 			for sHBINode in sHierBI do
 			(
-				local sHBINodeID = SE_AAH_GetSubID sHBINode
+				local sHBINodeID = SE_AAH_GetSubID SE_AAH_DrawSubIDType sHBINode
 				if sHBINodeID == -1 then gw.text sHBINode.pos ("-X-") color:red
-				else 	gw.text sHBINode.pos ("ID: " + (SE_AAH_GetSubID sHBINode) as string) color:orange
+				else 	gw.text sHBINode.pos ("ID: " + sHBINodeID as string) color:orange
 			)
 		)
 		gw.enlargeUpdateRect #whole
@@ -2173,26 +2792,33 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		button btn_CreateChildB "+ Child" width:50 height:16 tooltip:"Adds children bone for the selected one.\n\nSelect ONE bone and push this button."
 		button btn_CreateRollB "+ Roll" width:45 height:16 align:#right tooltip:"Adds roll/twist bone for the selected one.\n\nRoll/twist bone will be created halfway between selected bone and target one.\n\nSelect ONE bone and push this button."
 	)
-	group "Set SubID / BoneID"
+	group "Set SubID / BoneID / tag"
 	(
 		spinner spn_SubID "Set ID: " range:[-1, 100000, 0] type:#integer align:#left offset:[2,0] fieldwidth:45 across:2
-		button btn_SubIDSet "Set!" width:27 height:16 pos:[112,72] tooltip:"Applies SubID/BoneID for selected sub-object/bone."
+		button btn_SubIDSet "Set!" width:27 height:16 pos:[112,72] tooltip:"Applies SubID/BoneID/Tag for selected sub-object/bone."
 		--checkbutton btn_SubIDSet "Set!" width:27 height:18 pos:[112,75] highlightcolor:orange enabled:false tooltip:"Applies SubID/BoneID for selected sub-object/bone."
 		--checkbutton cbtn_ReplaceAnim "Replace" width:52 align:#left highlightcolor:orange checked:true tooltip:"Completely replaces object's animation with the selected one since frame 0.\nOtherwise applies selected animation after selected frame." across:2 enabled:false
-		
-		button btn_CalculateSubIDs "Calculate" height:16 across:2 tooltip:"Automatically calculates SubID/BoneID parameters for hierarchy.\n\nUse this tool if you don't need to indicate some bodyparts and you just need all SubID/BoneID parameters to be in order one after the other.\n\nSelect any sub-object/bone of hierarchy and push this button."
-		button btn_ManualSetSubIDs "Manual Set" height:16 across:2 tooltip:"Use this tool to manually set SubID/BoneID parameters for hierarchy.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		button btn_AutoSetSubIDs "Auto..." height:16 across:2 tooltip:"Tools for automatic set of SubID/BoneID/Tag parameters for hierarchy.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		button btn_ManualSetSubIDs "Manual..." height:16 across:2 tooltip:"UNDER DEVELOPMENT.\nUse this tool to manually set SubID/BoneID/Tag parameters for hierarchy.\n\nSelect any sub-object/bone of hierarchy and push this button."
 	)
 	group "Indexes and Types of bones"
 	(
 		button btn_SetBoneIdxsnTypes "Calculate for all hierarchy" width:140 height:16 tooltip:"Automatically calculates BoneType and BoneIndex parameters for custom bone hierarchy.\n\nQuick tip: it's better to calculate these values automatically.\n\nBoneIndex:\nJust the index of the bone. It need to be in order one after the other.\n\nBoneType:\nSpecial additional value that indicates the bone's type for the engine (does it have the children bone or not, is it the latest bone in the branch or not).\n1 or 3 - bones that don't have children bones\n0 or 2 - bones that have children bones\nIf there are a few children bones under the parent bone - all children bones must be 2 or 3, but the last one must be 0 or 1.\nIf there's only one children bone - this children bone must be 0 or 1.\n\nSelect any bone of hierarchy and push this button."
 	)
+	button btn_CheckHierarchyParams "ANALYSE HIERARCHY PARAMS" height:20 tooltip:"Reads all the SubID/BoneID/BoneId/Tag/BoneIndex/BoneType parameters and shows the analyse result.\nUse this if you're not sure of your SubID/BoneID/BoneId/Tag/BoneIndex/BoneType sets.\n\nSelect any sub-object/bone of hierarchy and push this button."
 	group "Clone hierarchy"
 	(
-		button btn_CloneHierarchy "Whole" width:40 height:16 align:#left across:4 tooltip:"(Whole hierarchy)\nClones the hierarchy.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
-		button btn_CloneChildren "Pt" width:22 height:16 tooltip:"(Partial)\nClones the selected children bone and it's children hierarchy, if needed. Use this, if you want to clone a bodypart, like hand or foot.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
-		checkbox chkbx_DontReplaceBones "Og" checked:false tooltip:"(Original)\nIf checked, it will clone the bones with the same type of objects, like it was in the original. Otherwise will replace bones with helpers.\n\nThere're some bugs during cloning some systems like Biped or CAT, that's why it's disabled by default and recommended to activate ONLY if you know what you're doing."
-		checkbox chkbx_FullTransformCopy "FT" align:#right checked:true tooltip:"(Full Transform)\nIf checked, it will clone the bones' full transformation (positions, rotations and scale), like it was in the original.\nOtherwise will clone positions only."
+		button btn_CloneHierarchy "Whole" width:40 height:16 align:#left across:3 tooltip:"(Whole hierarchy)\nClones the hierarchy.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
+		checkbox chkbx_DontReplaceBones "Orig" checked:false tooltip:"(Original)\nIf checked, it will clone the bones with the same type of objects, like it was in the original. Otherwise will replace bones with helpers.\n\nThere're some bugs during cloning some systems like Biped or CAT, that's why it's disabled by default and recommended to activate ONLY if you know what you're doing."
+		checkbox chkbx_FullTransformCopy "FullTF" align:#right checked:true tooltip:"(Full Transform)\nIf checked, it will clone the bones' full transformation (positions, rotations and scale), like it was in the original.\nOtherwise will clone positions only."
+		button btn_CloneChildren "Partial" width:42 height:16 align:#left across:2 tooltip:"(Partial)\nClones the selected children bone and it's children hierarchy, if needed. Use this, if you want to clone a bodypart, like hand or foot.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
+		checkbox chkbx_CloneChildrenAutoSetID "Calculate SubIDs" align:#right checked:true tooltip:"If checked, it recalculate cloned bones' SubID parameters automatically."
+		checkbox chkbx_CloneChildrenCalculateSubIDsInSeqOrder "Calc IDs in sequential order" align:#left checked:true enabled:false tooltip:"If checked, it will calculate SubID/BoneID/BoneId/tag just in sequential order (like BoneIndex), nothing fancy."
+		checkbox chkbx_CloneChildrenMirror "Mirror cloned" align:#left checked:false across:2 tooltip:"If checked, it will move and rotate (if the checkbox on the right is selected too) cloned bones regarding the selected axis."
+		checkbox chkbx_CloneChildrenMirrorRotations "Rots" align:#right checked:true enabled:true tooltip:"If checked, it will Rotate cloned bones regarding the selected axis.\nOtherwise it will move them only."
+		radiobuttons rb_CloneChildrenMirror "by parent Axis:" labels:#("X", "Y","Z", "XY", "YZ","ZX", "XYZ") columns:3 align:#left enabled:true tooltip:"You can choose the axis you want to mirror cloned bones."
+		checkbox chkbx_CloneChildrenXAxisRotated "Bones X-Axis rotated" align:#left checked:false enabled:false tooltip:"If checked, it will rotate cloned bones the way loax X-Axis will always look at the children bone."
+		checkbox chkbx_CloneChildrenRenameMirrored "Rename (L>R and L<R)" align:#left checked:false enabled:false tooltip:"If checked, it will rename cloned Left bones to Right, and vice versa."
 	)
 	group "Bones' rotations"
 	(
@@ -2222,11 +2848,333 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		button btn_SceneBonesAdaptationTool "Scene Adapt" across:2 height:16 align:#left tooltip:"Whole scene adaptation.\n\nDoes the same thing as the ''Skeleton adaptation'' above, but with all the characters in the scene, just in one click.\n\nCreates a clone of hierarchy for each character, automatically calculates proper rotation values.\nCan transfer animation from the old hierarchy to the new one.\nAlso automatically calculates BoneIndex parameters for bone hierarchy."
 		button btn_TestHierarchy "Test hier" width:55 height:16 align:#right tooltip:"Test your bone hierarchy to see its dimensions and direction axis.\n\nCreates a boundary box and the direction axis box (you can delete them later, if you don't need them).\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
 	)
-	
-	rollout ManualSubIDSetTool "Manual SubID Set Tool" width:300 height:400
+	group "Extra tools"
 	(
+		button btn_ResetObjectsTFs "Reset objs TF" across:2 height:16 align:#left tooltip:"Resets objects' transforms (Xforms and pivots).\n\nCould be useful in cases of future rigging export problems.\n\nSelect all the needed objects and push this button."
+		checkbox chkbx_RPivotToTheSceneCenter "Scn cntr" align:#right checked:true tooltip:"If checked, it will reset pivot of each object to the center of the scene.\nOtherwise, pivots will be centered to the object's center."
+		button btn_CreateUniqueLayerForHier "Create Layer for hierarchy" height:16 tooltip:"Creates a unique layer for selected objects/bones.\n\nSelect any bone of hierarchy and push this button."
+	)
+	
+	rollout AutoSubIDSetTool "Automatic SubID Set Tool" width:320 height:200
+	(
+		radiobuttons rb_ShowInViewportSubIDType "Show in viewport:" labels:#("SubID", "BoneID","BoneId","tag") columns:4 enabled:true tooltip:"You can choose what type of SubID/BoneID/BoneId/Tag parameters you want to see in selected viewport in real time."
+		
+		button btn_AutoCheckHierarchyParams "ANALYSE HIERARCHY PARAMS" height:20 tooltip:"Reads all the SubID/BoneID/BoneId/Tag/BoneIndex/BoneType parameters and shows the analyse result.\nUse this if you're not sure of your SubID/BoneID/BoneId/Tag/BoneIndex/BoneType sets.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		button btn_AutoInfoUpdate "INFO UPDATE" height:20 tooltip:"Press this button to update all the following columns, and see fresh info."
+		button btn_UnifyBySubID "Unify by AA's SubID" height:16 align:#left across:3 tooltip:"Automatically sets SubID/BoneID/BoneId/tag parameters for hierarchy, by unifying them from SubID (\"Another Animation\" Scripts ID parameter) to other types.\n\nIt means that SubID parameter will be applied to all the other ones.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		checkbutton ib_SubIDCheck "Status:" height:16 width:45 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[50,0]
+		checkbutton cbtn_SubIDCheck "INCORRECT!" height:16 width:70 highlightcolor:[127,0,14] checked:true enabled:false align:#right offset:[0,0] tooltip:"The result of testing AA's SubID parameters.\nIf all the bones has a unique SubID parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+		button btn_UnifyByBoneID "Unify by Kam's BoneID" height:16 align:#left across:3 tooltip:"Automatically sets SubID/BoneID/BoneId/tag parameters for hierarchy, by unifying them from BoneID (\"Kam's scripts\" ID parameter) to other types.\n\nIt means that BoneID parameter will be applied to all the other ones.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		checkbutton ib_BoneIDCheck "Status:" height:16 width:45 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[50,0]
+		checkbutton cbtn_BoneIDCheck "INCORRECT!" height:16 width:70 highlightcolor:[127,0,14] checked:true enabled:false align:#right offset:[0,0] tooltip:"The result of testing Kam's BoneID parameters.\nIf all the bones has a unique BoneID parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+		button btn_UnifyByBoneIdSeggaeman "Unify by Seggaeman's BoneId" height:16 align:#left across:3 tooltip:"Automatically sets SubID/BoneID/BoneId/tag parameters for hierarchy, by unifying them from BoneId (\"Seggaeman's DFF plugin\" ID parameter, very rare stuff) to other types.\n\nIt means that BoneId parameter will be applied to all the other ones.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		checkbutton ib_BoneIdSeggaemanCheck "Status:" height:16 width:45 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[50,0]
+		checkbutton cbtn_BoneIdSeggaemanCheck "INCORRECT!" height:16 width:70 highlightcolor:[127,0,14] checked:true enabled:false align:#right offset:[0,0] tooltip:"The result of testing Seggaeman's BoneId parameters.\nIf all the bones has a unique BoneId parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+		button btn_UnifyByTag "Unify by aap's tag" height:16 align:#left across:3 tooltip:"Automatically sets SubID/BoneID/BoneId/tag parameters for hierarchy, by unifying them from tag (\"The Hero/aap's DFF plugin\" ID parameter) to other types.\n\nIt means that tag parameter will be applied to all the other ones.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		checkbutton ib_TagCheck "Status:" height:16 width:45 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[50,0]
+		checkbutton cbtn_TagCheck "INCORRECT!" height:16 width:70 highlightcolor:[127,0,14] checked:true enabled:false align:#right offset:[0,0] tooltip:"The result of testing The Hero/aap's tag parameters.\nIf all the bones has a unique tag parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+		
+		button btn_CalculateSubIDs "Calculate whole new Sub IDs" height:16 align:#left across:2 tooltip:"Automatically calculates SubID/BoneID/BoneId/tag parameters for hierarchy.\n\nUse this tool if you don't need to indicate some bodyparts and you just need all SubID/BoneID parameters to be in order one after the other.\n\nSelect any sub-object/bone of hierarchy and push this button."
+		checkbox chkbx_CalculateSubIDsInSeqOrder "in sequential order" align:#right checked:true enabled:false tooltip:"If checked, it will calculate SubID/BoneID/BoneId/tag just in sequential order (like BoneIndex), nothing fancy."
+		
+		
+		fn UpdateSubIDAnalyse =
+		(
+			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+			(
+				local finalHierAnalyseInfo = SE_AAH_AnalyseHierarchy selection[1] false -- hierAA, subAA, hierKams, subKams, hierSeggaeman, subSeggaeman, hieraap, subaap
+				if finalHierAnalyseInfo.subAA == true then
+				(
+					cbtn_SubIDCheck.caption = "CORRECT!"
+					cbtn_SubIDCheck.highlightcolor = [0,127,14]
+					cbtn_SubIDCheck.tooltip = "AA's SubID parameters are just FINE!\nYou can use it to Unify other types to them."
+				)
+				else
+				(
+					cbtn_SubIDCheck.caption = "INCORRECT!"
+					cbtn_SubIDCheck.highlightcolor = [127,0,14]
+					cbtn_SubIDCheck.tooltip = "AA's SubID parameters are WRONG!\nRecalculate them or Unify by OTHER types."
+				)
+				if finalHierAnalyseInfo.subKams == true then
+				(
+					cbtn_BoneIDCheck.caption = "CORRECT!"
+					cbtn_BoneIDCheck.highlightcolor = [0,127,14]
+					cbtn_BoneIDCheck.tooltip = "Kam's BoneID parameters are just FINE!\nYou can use it to Unify other types to them."
+				)
+				else
+				(
+					cbtn_BoneIDCheck.caption = "INCORRECT!"
+					cbtn_BoneIDCheck.highlightcolor = [127,0,14]
+					cbtn_BoneIDCheck.tooltip = "Kam's BoneID parameters are WRONG!\nRecalculate them or Unify by OTHER types."
+				)
+				if finalHierAnalyseInfo.subSeggaeman == true then
+				(
+					cbtn_BoneIdSeggaemanCheck.caption = "CORRECT!"
+					cbtn_BoneIdSeggaemanCheck.highlightcolor = [0,127,14]
+					cbtn_BoneIdSeggaemanCheck.tooltip = "Seggaeman's BoneId parameters are just FINE!\nYou can use it to Unify other types to them."
+				)
+				else
+				(
+					cbtn_BoneIdSeggaemanCheck.caption = "INCORRECT!"
+					cbtn_BoneIdSeggaemanCheck.highlightcolor = [127,0,14]
+					cbtn_BoneIdSeggaemanCheck.tooltip = "Seggaeman's BoneId parameters are WRONG!\nRecalculate them or Unify by OTHER types."
+				)
+				if finalHierAnalyseInfo.subaap == true then
+				(
+					cbtn_TagCheck.caption = "CORRECT!"
+					cbtn_TagCheck.highlightcolor = [0,127,14]
+					cbtn_TagCheck.tooltip = "The Hero/aap's tag parameters are just FINE!\nYou can use it to Unify other types to them."
+				)
+				else
+				(
+					cbtn_TagCheck.caption = "INCORRECT!"
+					cbtn_TagCheck.highlightcolor = [127,0,14]
+					cbtn_TagCheck.tooltip = "The Hero/aap's tag parameters are WRONG!\nRecalculate them or Unify by OTHER types."
+				)
+			)
+			else
+			(
+				cbtn_SubIDCheck.caption = "-"
+				cbtn_SubIDCheck.highlightcolor = [85,75,65]
+				cbtn_SubIDCheck.tooltip = "The result of testing AA's SubID parameters.\nIf all the bones has a unique SubID parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+				cbtn_BoneIDCheck.caption = "-"
+				cbtn_BoneIDCheck.highlightcolor = [85,75,65]
+				cbtn_BoneIDCheck.tooltip = "The result of testing Kam's BoneID parameters.\nIf all the bones has a unique BoneID parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+				cbtn_BoneIdSeggaemanCheck.caption = "-"
+				cbtn_BoneIdSeggaemanCheck.highlightcolor = [85,75,65]
+				cbtn_BoneIdSeggaemanCheck.tooltip = "The result of testing Seggaeman's BoneId parameters.\nIf all the bones has a unique BoneId parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+				cbtn_TagCheck.caption = "-"
+				cbtn_TagCheck.highlightcolor = [85,75,65]
+				cbtn_TagCheck.tooltip = "The result of testing aap's tag parameters.\nIf all the bones has a unique tag parameter - the test's result will be green \"CORRECT!\".\nOtherwise it will be red \"INCORRECT!\"."
+			)
+			
+			if SE_AAH_ProcessUpdateFreezeTrigger == false do
+			(
+				if selection.count > 0 then
+				(
+					btn_CheckHierarchyParams.enabled = true
+					btn_SetBoneIdxsnTypes.enabled = true
+					btn_CloneHierarchy.enabled = true
+					btn_CloneChildren.enabled = true
+					btn_TestHierarchy.enabled = true
+					btn_CalcHierRotations.enabled = true
+					btn_CalcSelectedBonesRotations.enabled = true
+					btn_BonesAdaptationTool.enabled = true
+					if selection.count == 1 then
+					(
+						spn_SubID.value = SE_AAH_GetSubID 0 $
+						spn_SubID.enabled = true
+						btn_SubIDSet.enabled = true
+						btn_CreateChildB.enabled = true
+						btn_CreateRollB.enabled = true
+					)
+					else
+					(
+						spn_SubID.value = 0
+						spn_SubID.enabled = false
+						btn_SubIDSet.enabled = false
+						btn_CreateChildB.enabled = false
+						btn_CreateRollB.enabled = false
+					)
+					if SE_AAH_DrawSubIDsTrigger then
+					(
+						registerRedrawViewsCallback SE_AAH_ShowSubIDsInViewport -- thanks aleks926820 for the idea
+					)
+					else
+					(
+						unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
+					)
+				)
+				else
+				(
+					spn_SubID.value = 0
+					spn_SubID.enabled = false
+					btn_SubIDSet.enabled = false
+					btn_CreateChildB.enabled = false
+					btn_CreateRollB.enabled = false
+					
+					btn_CheckHierarchyParams.enabled = false
+					btn_SetBoneIdxsnTypes.enabled = false
+					btn_CloneHierarchy.enabled = false
+					btn_CloneChildren.enabled = false
+					btn_TestHierarchy.enabled = false
+					btn_CalcHierRotations.enabled = false
+					btn_CalcSelectedBonesRotations.enabled = false
+					btn_BonesAdaptationTool.enabled = false
+					
+					unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
+				)
+			)
+		)
+		
+		
+		
+		on AutoSubIDSetTool open do
+		(
+			--callbacks.addScript #selectionSetChanged "SE_AAH_Rig_Tuner_Rollout.SubIDsAndFrameNames()" id:#se_aah_rigtuner
+			--SubIDsAndFrameNames()
+			SE_AAH_AutoSubIDSetToolEnabled = true
+			SE_AAH_DrawSubIDType = 1
+			rb_ShowInViewportSubIDType.state = 1
+			if SE_AAH_DrawSubIDsTrigger == false do
+			(
+				SE_AAH_DrawSubIDsTrigger = true
+				registerRedrawViewsCallback SE_AAH_ShowSubIDsInViewport -- thanks aleks926820 for the idea
+			)
+			UpdateSubIDAnalyse()
+		)
+
+		on AutoSubIDSetTool close do
+		(
+			--callbacks.removeScripts id:#se_aah_rigtuner
+			SE_AAH_AutoSubIDSetToolEnabled = false
+			if SE_AAH_ManualSubIDSetToolEnabled == false do
+			(
+				SE_AAH_DrawSubIDsTrigger = false
+				unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
+			)
+		)
+		
+		on rb_ShowInViewportSubIDType changed theState do 
+		(
+			if rb_ShowInViewportSubIDType.state == 1 then
+			(
+				SE_AAH_DrawSubIDType = 1
+			)
+			else if rb_ShowInViewportSubIDType.state == 2 then
+			(
+				SE_AAH_DrawSubIDType = 2
+			)
+			else if rb_ShowInViewportSubIDType.state == 3 then
+			(
+				SE_AAH_DrawSubIDType = 3
+			)
+			else if rb_ShowInViewportSubIDType.state == 4 do
+			(
+				SE_AAH_DrawSubIDType = 4
+			)
+			UpdateSubIDAnalyse()
+		)
+		
+		on btn_AutoCheckHierarchyParams pressed do
+		(
+			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+			(
+				--SE_AAH_UpdateOrCreateAAHHelperLayer()
+				local finalHierAnalyseInfo = SE_AAH_AnalyseHierarchy selection[1] true -- hierAA, subAA, hierKams, subKams, hierSeggaeman, subSeggaeman, hieraap, subaap
+				--if finalHierAnalyseInfo.hierAA == true and finalHierAnalyseInfo.hierKams == true and finalHierAnalyseInfo.hierSeggaeman == true and finalHierAnalyseInfo.hieraap == true then messageBox "Noice!\n" title:"Cool"
+				--else messageBox "Looser!\n" title:"Not cool"
+			)
+			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+		)
+		
+		on btn_AutoInfoUpdate pressed do
+		(
+			UpdateSubIDAnalyse()
+		)
+		
+		on btn_UnifyBySubID pressed do
+		(
+			if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+			(
+				if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+				(
+					SE_AAH_UnifySubIDParamsFinally 1 "AA's SubID" "SubID" "BoneID" "BoneId" "tag" true
+					UpdateSubIDAnalyse()
+				)
+				else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+			)
+		)
+		
+		on btn_UnifyByBoneID pressed do
+		(
+			if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+			(
+				if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+				(
+					SE_AAH_UnifySubIDParamsFinally 2 "Kam's BoneID" "BoneID" "SubID" "BoneId" "tag" true
+					UpdateSubIDAnalyse()
+				)
+				else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+			)
+		)
+		
+		on btn_UnifyByBoneIdSeggaeman pressed do
+		(
+			if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+			(
+				if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+				(
+					SE_AAH_UnifySubIDParamsFinally 3 "Seggaeman's BoneId" "BoneId" "SubID" "BoneID" "tag" true
+					UpdateSubIDAnalyse()
+				)
+				else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+			)
+		)
+		
+		on btn_UnifyByTag pressed do
+		(
+			if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+			(
+				if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+				(
+					SE_AAH_UnifySubIDParamsFinally 4 "The Hero/aap's tag" "tag" "SubID" "BoneID" "BoneId" true
+					UpdateSubIDAnalyse()
+				)
+				else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+			)
+		)
+		
+		on btn_CalculateSubIDs pressed do
+		(
+			if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+			(
+				if selection[1] != undefined then
+				(
+					if selection[1].target != undefined then
+					(
+						setUserProp selection[1] "SubID" 0
+						setUserProp selection[1] "BoneID" 0
+						setUserProp selection[1] "BoneId" 0
+						setUserProp selection[1] "tag" 0
+						setUserProp selection[1].target "SubID" 1
+						setUserProp selection[1].target "BoneID" 1
+						setUserProp selection[1].target "BoneId" 1
+						setUserProp selection[1].target "tag" 1
+					)
+					else
+					(
+						if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+						(
+							local sHier = SE_AAH_GetAllHierarchy selection[1] 0
+							local newSubID = 0
+							for s in sHier do
+							(
+								setUserProp s "SubID" newSubID
+								setUserProp s "BoneID" newSubID
+								setUserProp s "BoneId" newSubID
+								setUserProp s "tag" newSubID
+								newSubID = newSubID + 1
+							)
+							UpdateSubIDAnalyse()
+							--SE_AAH_ShowSubIDsInViewport
+							--try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+							messagebox "Now your hierarchy's SubIDs are ready for the game!" title:"Done!"
+						)
+						else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+					)
+				)
+				else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+			)
+		)
+	)
+	
+	
+	rollout ManualSubIDSetTool "Manual SubID Set Tool (UNDER DEVELOPMENT)" width:300 height:400
+	(
+		radiobuttons rb_ShowInViewportSubIDTypeMan "Show in viewport:" labels:#("SubID", "BoneID","BoneId","tag") columns:4 enabled:true tooltip:"You can choose what type of SubID/BoneID/BoneId/Tag parameters you want to see in selected viewport in real time."
 		button btn_TestHierarchy2 "Test hier2" width:55 height:16 align:#right tooltip:"Test your bone hierarchy.\nAlso automatically calculates BoneIndex parameters for whole bone hierarchy.\n\nSelect any bone of hierarchy and push this button."
-		checkbox chkbx_SetSubIDs "Set SubID / BoneID" align:#left checked:true across:2 tooltip:"Set SubID / BoneID by this tool. Select need bone, then select needed bone type from the list down here."
+		checkbox chkbx_SetSubIDs "Set SubID / BoneID / tag" align:#left checked:true across:2 tooltip:"Set SubID/BoneID/Tag by this tool. Select need bone, then select needed bone type from the list down here."
 		checkbox chkbx_SetNamesToo "Set names too" align:#right checked:false tooltip:"If checked, it will clone the bones with the same type of objects, like it was in the original. Otherwise will replace bones with helpers.\n\nThere're some bugs during cloning some systems like Biped or CAT, that's why it's disabled by default and recommended to activate ONLY if you know what you're doing."
 		button btn_SetBRoot "Root" height:16 tooltip:"Set the Root bone (main bone in the hierarchy)." --border:false 
 		button btn_SetBPelvis "Pelvis" height:16 tooltip:"Set the Pelvis bone (the parent bone of legs and (sometimes) spine bone)."
@@ -2265,15 +3213,44 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		(
 			--callbacks.addScript #selectionSetChanged "SE_AAH_Rig_Tuner_Rollout.SubIDsAndFrameNames()" id:#se_aah_rigtuner
 			--SubIDsAndFrameNames()
-			DrawBoneIDsTrigger = true
-			registerRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport -- thanks aleks926820 for the idea
+			SE_AAH_ManualSubIDSetToolEnabled = true
+			SE_AAH_DrawSubIDType = 1
+			if SE_AAH_DrawSubIDsTrigger == false do
+			(
+				SE_AAH_DrawSubIDsTrigger = true
+				registerRedrawViewsCallback SE_AAH_ShowSubIDsInViewport -- thanks aleks926820 for the idea
+			)
 		)
 
 		on ManualSubIDSetTool close do
 		(
 			--callbacks.removeScripts id:#se_aah_rigtuner
-			DrawBoneIDsTrigger = false
-			unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+			SE_AAH_ManualSubIDSetToolEnabled = false
+			if SE_AAH_AutoSubIDSetToolEnabled == false do
+			(
+				SE_AAH_DrawSubIDsTrigger = false
+				unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
+			)
+		)
+		
+		on rb_ShowInViewportSubIDTypeMan changed theState do 
+		(
+			if rb_ShowInViewportSubIDTypeMan.state == 1 then
+			(
+				SE_AAH_DrawSubIDType = 1
+			)
+			else if rb_ShowInViewportSubIDTypeMan.state == 2 then
+			(
+				SE_AAH_DrawSubIDType = 2
+			)
+			else if rb_ShowInViewportSubIDTypeMan.state == 3 then
+			(
+				SE_AAH_DrawSubIDType = 3
+			)
+			else if rb_ShowInViewportSubIDTypeMan.state == 4 do
+			(
+				SE_AAH_DrawSubIDType = 4
+			)
 		)
 		
 		
@@ -2304,6 +3281,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 					setUserProp $ "SubID" "0"
 					setUserProp $ "BoneID" "0"
 					setUserProp $ "BoneId" "0"
+					setUserProp $ "tag" "0"
 				)
 				if chkbx_SetNamesToo.state == true do $.name = "Root"
 				SE_AAH_Rig_Tuner_Rollout.SubIDsAndFrameNames()
@@ -2319,6 +3297,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 					setUserProp $ "SubID" "1"
 					setUserProp $ "BoneID" "1"
 					setUserProp $ "BoneId" "1"
+					setUserProp $ "tag" "1"
 				)
 				if chkbx_SetNamesToo.state == true do $.name = "Pelvis"
 				SE_AAH_Rig_Tuner_Rollout.SubIDsAndFrameNames()
@@ -2330,6 +3309,12 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		
 		
 		
+	)
+	
+	on btn_AutoSetSubIDs pressed do
+	(
+		try (DestroyDialog AutoSubIDSetTool) catch()
+		createDialog AutoSubIDSetTool
 	)
 	
 	on btn_ManualSetSubIDs pressed do
@@ -2435,7 +3420,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		(
 			if selection.count > 0 then
 			(
-				btn_CalculateSubIDs.enabled = true
+				btn_CheckHierarchyParams.enabled = true
 				btn_SetBoneIdxsnTypes.enabled = true
 				btn_CloneHierarchy.enabled = true
 				btn_CloneChildren.enabled = true
@@ -2445,7 +3430,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				btn_BonesAdaptationTool.enabled = true
 				if selection.count == 1 then
 				(
-					spn_SubID.value = SE_AAH_GetSubID $
+					spn_SubID.value = SE_AAH_GetSubID 0 $
 					spn_SubID.enabled = true
 					btn_SubIDSet.enabled = true
 					btn_CreateChildB.enabled = true
@@ -2459,13 +3444,13 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 					btn_CreateChildB.enabled = false
 					btn_CreateRollB.enabled = false
 				)
-				if DrawBoneIDsTrigger then
+				if SE_AAH_DrawSubIDsTrigger then
 				(
-					registerRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport -- thanks aleks926820 for the idea
+					registerRedrawViewsCallback SE_AAH_ShowSubIDsInViewport -- thanks aleks926820 for the idea
 				)
 				else
 				(
-					unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+					unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
 				)
 			)
 			else
@@ -2476,7 +3461,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				btn_CreateChildB.enabled = false
 				btn_CreateRollB.enabled = false
 				
-				btn_CalculateSubIDs.enabled = false
+				btn_CheckHierarchyParams.enabled = false
 				btn_SetBoneIdxsnTypes.enabled = false
 				btn_CloneHierarchy.enabled = false
 				btn_CloneChildren.enabled = false
@@ -2485,7 +3470,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				btn_CalcSelectedBonesRotations.enabled = false
 				btn_BonesAdaptationTool.enabled = false
 				
-				unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+				unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
 			)
 		)
 	)
@@ -2503,7 +3488,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 	on SE_AAH_Rig_Tuner_Rollout close do
 	(
 		callbacks.removeScripts id:#se_aah_rigtuner
-		unRegisterRedrawViewsCallback SE_AAH_ShowBoneIDsInViewport
+		unRegisterRedrawViewsCallback SE_AAH_ShowSubIDsInViewport
 	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
@@ -2519,6 +3504,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		setUserProp nrtbn "SubID" "0"
 		setUserProp nrtbn "BoneID" "0"
 		setUserProp nrtbn "BoneId" "0"
+		setUserProp nrtbn "tag" "0"
 		--local nrtbnTempDummy = dummy boxsize:([0.001,0.001,0.001])
 		--nrtbn.baseobject = nrtbnTempDummy
 		--delete nrtbnTempDummy
@@ -2527,7 +3513,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		--nrtbn.showLinksOnly = true
 		
 		select nrtbn
-	)	
+	)
 	
 	on btn_CreateChildB pressed do
 	(
@@ -2541,25 +3527,13 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 			nrtbn.name = nrtbnParent.name + "Ch" + nrtbnParentChildCountS
 			nrtbnParent.layer.addnode nrtbn
 			local nrtbnHier = SE_AAH_GetAllHierarchy selection[1] 0
-			local nrtbnBoneID = (SE_AAH_GetSubID nrtbnParent) + 1
-			local freeBoneIDTrigger = true
-			do -- trying to predict optimal SubID value depending on the free SubIDs in the hierarchy
-			(
-				freeBoneIDTrigger = true
-				for nrtbnHierNode in nrtbnHier while freeBoneIDTrigger == true do
-				(
-					if nrtbnBoneID == SE_AAH_GetSubID nrtbnHierNode do
-					(
-						nrtbnBoneID = nrtbnBoneID + 1
-						freeBoneIDTrigger = false
-					)
-				)
-			)
-			while freeBoneIDTrigger == false
+			local nrtbnBoneID = (SE_AAH_GetSubID 0 nrtbnParent) + 1
+			nrtbnBoneID = SE_AAH_CheckAndFindFreeSubID nrtbnHier nrtbnBoneID 
 			clearselection()
 			setUserProp nrtbn "SubID" nrtbnBoneID
 			setUserProp nrtbn "BoneID" nrtbnBoneID
 			setUserProp nrtbn "BoneId" nrtbnBoneID
+			setUserProp nrtbn "tag" nrtbnBoneID
 			nrtbn.parent = nrtbnParent
 			--local nrtbnTempDummy = dummy boxsize:([0.001,0.001,0.001])
 			--nrtbn.baseobject = nrtbnTempDummy
@@ -2598,12 +3572,14 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				rollBn.position = (rollParent.position - ((rollParent.position - rollChild.position)/2))
 				rollBn.name = rollParent.name + "Roll"
 				rollParent.layer.addnode rollBn
-				local rollBoneID = (SE_AAH_GetSubID rollParent)
-				if rollBoneID > -1 then rollBoneID = rollBoneID + 7000
-				else rollBoneID = 7000
+				local rollBoneID = (SE_AAH_GetSubID 0 rollParent)
+				local nrtbnHier = SE_AAH_GetAllHierarchy selection[1] 0
+				if rollBoneID > -1 then rollBoneID = SE_AAH_CheckAndFindFreeSubID nrtbnHier (rollBoneID + 7000)
+				else rollBoneID = SE_AAH_CheckAndFindFreeSubID nrtbnHier 7000
 				setUserProp rollBn "SubID" rollBoneID
 				setUserProp rollBn "BoneID" rollBoneID
 				setUserProp rollBn "BoneId" rollBoneID
+				setUserProp rollBn "tag" rollBoneID
 				rollBn.parent = rollParent
 				rollBn.showLinks = true
 				--rollBn.showLinksOnly = true
@@ -2627,43 +3603,24 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 	(
 		if selection.count == 1 do
 		(
-			if SE_AAH_GetSubID $ != -1 and spn_SubID.enabled == false do spn_SubID.enabled = true
+			if SE_AAH_GetSubID 0 $ != -1 and spn_SubID.enabled == false do spn_SubID.enabled = true
 			setUserProp $ "SubID" spn_SubID.value
 			setUserProp $ "BoneID" spn_SubID.value
 			setUserProp $ "BoneId" spn_SubID.value
+			setUserProp $ "tag" spn_SubID.value
 		)
 	)
 	
-	on btn_CalculateSubIDs pressed do
+	on btn_CheckHierarchyParams pressed do
 	(
-		if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+		if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 		(
-			if selection[1].target != undefined then
-			(
-				setUserProp selection[1] "SubID" 0
-				setUserProp selection[1] "BoneID" 0
-				setUserProp selection[1] "BoneId" 0
-				setUserProp selection[1].target "SubID" 1
-				setUserProp selection[1].target "BoneID" 1
-				setUserProp selection[1].target "BoneId" 1
-			)
-			else
-			(
-				if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
-				(
-					local sHier = SE_AAH_GetAllHierarchy selection[1] 0
-					local newSubID = 0
-					for s in sHier do
-					(
-						setUserProp s "SubID" newSubID
-						setUserProp s "BoneID" newSubID
-						setUserProp s "BoneId" newSubID
-						newSubID = newSubID + 1
-					)
-				)
-				else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
-			)
+			--SE_AAH_UpdateOrCreateAAHHelperLayer()
+			local finalHierAnalyseInfo = SE_AAH_AnalyseHierarchy selection[1] true -- hierAA, subAA, hierKams, subKams, hierSeggaeman, subSeggaeman, hieraap, subaap
+			--if finalHierAnalyseInfo.hierAA == true and finalHierAnalyseInfo.hierKams == true and finalHierAnalyseInfo.hierSeggaeman == true and finalHierAnalyseInfo.hieraap == true then messageBox "Noice!\n" title:"Cool"
+			--else messageBox "Looser!\n" title:"Not cool"
 		)
+		else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
 	)
 	
 	/*---------------------------------------------------------------------------------------------------*/
@@ -2687,8 +3644,13 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 				local sSPunknown = 0
 				if (queryBox "SA?" title:"ATTENTION") do sSPunknown = 4				
 				setUserProp sHier[1] "SPunknown" sSPunknown
+				
+				--fakeBiped = True
+				--SkinMeshNumber = 1
+				setUserProp sHier[1] "fakeBiped" "True"
 				SE_AAH_SetBonesIndexesnTypes sHier
-				messagebox "Now your custom bone hierarchy is ready for use in game!" title:"Done!"
+				--try (windows.processPostedMessages()) catch() --Max is telling Windows “I am still alive and kicking!” and not freezing while big loop (thanks, Bobo from forums.cgsociety.org!). Warning! Don't put this INSIDE big loop, it works VERY SLOW! Try/Catch cause Max 2011+ support only.
+				messagebox "Now your hierarchy's BoneIndexes and BoneTypes are ready for the game!" title:"Done!"
 			)
 			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
 		)
@@ -2697,6 +3659,13 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 	/*---------------------------------------------------------------------------------------------------*/
 	/*---------------------------------------------------------------------------------------------------*/
 	/*---------------------------------------------------------------------------------------------------*/
+	/*
+	checkbox chkbx_CloneChildrenAutoSetID "Calculate SubIDs" align:#right checked:true tooltip:"If checked, it recalculate cloned bones' SubID parameters automatically."
+	checkbox chkbx_CloneChildrenCalculateSubIDsInSeqOrder "Calc IDs in sequential order" align:#left checked:true enabled:false tooltip:"If checked, it will calculate SubID/BoneID/BoneId/tag just in sequential order (like BoneIndex), nothing fancy."
+	checkbox chkbx_CloneChildrenMirror "Mirror cloned" align:#left checked:false across:2 tooltip:"If checked, it will move and rotate (if the checkbox on the right is selected too) cloned bones regarding the selected axis."
+	checkbox chkbx_CloneChildrenMirrorRotations "Rots" align:#right checked:true enabled:false tooltip:"If checked, it will Rotate cloned bones regarding the selected axis.\nOtherwise it will move them only."
+	radiobuttons rb_CloneChildrenMirror "by axis:" labels:#("X", "Y","Z", "XY", "YZ","ZX", "XYZ") columns:3 align:#left enabled:false tooltip:"You can choose the axis you want to mirror cloned bones."
+	*/
 	
 	on btn_CloneHierarchy pressed do
 	(
@@ -2704,9 +3673,10 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		(
 			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 			(
+				local oldAnimKeysState = SE_AAH_GetAndOffAnimKeys()
 				local sHier = SE_AAH_GetAllHierarchy selection[1] 0
 				SE_AAH_SetBonesIndexesnTypes sHier
-				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHier chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state false -- make a clone of the hierarchy with copypasted rotations
+				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHier chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state false false false false false 0 -- make a clone of the hierarchy with copypasted rotations
 				local cHLayer = LayerManager.newLayer()
 				if sHierTempCloneArray[1] != undefined do
 				(	
@@ -2717,6 +3687,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 					)
 					select sHierTempCloneArray[1]
 				)
+				SE_AAH_SetBackAnimKeys oldAnimKeysState
 			)
 			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
 		)
@@ -2728,10 +3699,11 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 		(
 			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
 			(
+				local oldAnimKeysState = SE_AAH_GetAndOffAnimKeys()
 				local sHier = SE_AAH_GetAllHierarchy selection[1] 0
 				SE_AAH_SetBonesIndexesnTypes sHier
 				local sHierCh = SE_AAH_GetChildrenHierarchy selection 0
-				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHierCh chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state false -- make a clone of the hierarchy with copypasted rotations
+				local sHierTempCloneArray = SE_AAH_CloneHierarchy sHierCh chkbx_DontReplaceBones.state chkbx_FullTransformCopy.state false chkbx_CloneChildrenAutoSetID.state chkbx_CloneChildrenCalculateSubIDsInSeqOrder.state chkbx_CloneChildrenMirror.state chkbx_CloneChildrenMirrorRotations.state rb_CloneChildrenMirror.state -- make a clone of the hierarchy with copypasted rotations
 				local cHLayer = LayerManager.newLayer()
 				if sHierTempCloneArray[1] != undefined do
 				(	
@@ -2742,6 +3714,7 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 					)
 					select sHierTempCloneArray[1]
 				)
+				SE_AAH_SetBackAnimKeys oldAnimKeysState
 			)
 			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
 		)
@@ -3368,6 +4341,77 @@ rollout SE_AAH_Rig_Tuner_Rollout "Rig Tuner" width:132 height:170
 			SE_AAH_ProcessUpdateFreezeTrigger = false
 		)
 	)
+	
+	on btn_ResetObjectsTFs pressed do
+	(
+		if (queryBox "Are you sure you selected all the needed geometry objects?" title:"ATTENTION") do
+		(
+			if selection.count > 0 do
+			(
+				SE_AAH_ProcessUpdateFreezeTrigger = true
+				local oldAnimKeysState = SE_AAH_GetAndOffAnimKeys()
+				SE_AAH_SetOffAnimKeys()
+				wholeAttachBakingTime = timeStamp()
+				local processedObjects = 0
+				local skippedObjects = 0
+				local pgbCount = 0
+				local pgbCountTotal = selection.count
+				for s in selection do
+				(
+					if superclassof s == GeometryClass then
+					(
+						SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Processing: " + s.name
+						ResetXForm s
+						collapseStack s
+						if chkbx_RPivotToTheSceneCenter.state == true then s.pivot = [0.0, 0.0, 0.0]
+						else s.pivot = s.center
+						processedObjects = processedObjects + 1
+					)
+					else skippedObjects = skippedObjects + 1
+					pgbCount = pgbCount + 1
+					SE_AAH_Process_Rollout.prgb_AAH.value = 100.0*pgbCount/pgbCountTotal
+				)
+				if processedObjects > 0 do
+				(
+					wholeAttachBakingTime = (((timeStamp() - wholeAttachBakingTime) / 1000.0) as string)
+					SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Objects processed in " + wholeAttachBakingTime + "s"
+						
+					local info_str_msg
+					if processedObjects == 1 then info_str_msg = processedObjects as string + " object\nwas processed in " + wholeAttachBakingTime + " seconds!"
+					else info_str_msg = processedObjects as string + " objects\nwere processed in " + wholeAttachBakingTime + " seconds!"
+					if skippedObjects > 0 do
+					(
+						if skippedObjects == 1 then info_str_msg = info_str_msg + "\n\n" + skippedObjects as string + " object\nwas skipped."
+						else info_str_msg = info_str_msg + "\n\n" + skippedObjects as string + " objects\nwere skipped."
+					)
+					messagebox info_str_msg title:"Done!"
+				)
+				SE_AAH_Process_Rollout.prgb_AAH.value = 0
+				SE_AAH_SetBackAnimKeys oldAnimKeysState
+				SE_AAH_ProcessUpdateFreezeTrigger = false
+			)
+		)
+	)
+	
+	on btn_CreateUniqueLayerForHier pressed do
+	(
+		if (queryBox "Have you selected any bone of hierarchy?" title:"ATTENTION") do
+		(
+			if selection[1] != undefined and (selection[1].children.count > 0 OR selection[1].parent != undefined) then
+			(
+				--SE_AAH_UpdateOrCreateAAHHelperLayer()
+				local sHier = SE_AAH_GetAllHierarchy selection[1] 0
+				
+				local bonesNewLayer = SE_AAH_GetUniqueHierarchyLayer sHier -- -2 means impostor nodes in the same layer; -1 means hierarchy lays between different layers; proper layer means hierarchy has a proper unique layer
+				if bonesNewLayer == -1 or bonesNewLayer == -2 do
+				(
+					bonesNewLayer = SE_AAH_CreateLayerForHierarchy sHier ("Bones " + sHier[1].name + " layer")
+				)
+
+			)
+			else messageBox "You picked the wrong house, fool!\n(Select any bone of hierarchy and THEN push that button!)\n" title:"ERROR"
+		)
+	)
 )
 
 /*********************************************************************************************************************************************************************/
@@ -3419,8 +4463,12 @@ rollout SE_AAH_Main_Anim_Rollout "Main Anim" width:132 height:170
 		checkbutton ib_BakeAKbutton "Additional control:" height:15 width:100 highlightColor:[85,75,65] checked:true enabled:false align:#center offset:[0,-3]
 		button BakeObjectsTransformKeys "Bake Keys" width:68 height:16 align:#left across:2 tooltip:"Bakes selected object's transform animation keys.\n\nSelect all needed bones, choose transform type mode, keys range and frame interval in the right field and push this button."
 		spinner spn_BkTrnsfrmAccuracyVal "Int:" range:[0.001, 1000.0, 1.0] type:#float align:#right across:2 fieldwidth:45 tooltip:"Animation Keys Baking Frame Interval"
+		checkbox chkbx_BkDeleteOrigkeys "Delete original keysframes" align:#left checked:true tooltip:"While baking, the script will delete all the original keyfames inside the baking animation interval."
 		button SmoothObjectsAnimation "Smooth" width:55 height:16 align:#left across:2 tooltip:"Smoothes selected object's transform animation, makes it a bit less snappy.\n\nSelect all needed bones, choose transform type mode and keys range and push this button.\n\nRepeat these steps if you are not yet satisfied the result."
 		spinner spn_SmoothTimesVal "Times:" range:[1, 100000, 1] type:#integer align:#right across:2 fieldwidth:45 tooltip:"How many times you want to smooth your animation."
+		radiobuttons rb_SmoothingAlgorithm "Smoothing algorithm:" labels:#("Def", "CS","IG") columns:3 enabled:false tooltip:"UNDER DEVELOPMENT.\nYou can choose the animation smoothing algorithm.\n\nDef: The dafault smoothing algorithm, best for solo objects/bones.\n\nCS: More advanced smoothing algorithm, usable for big structures and bone hierarchy. Forcibly creates position keyframes, even when using for rotation only, that's why it's better for Cutscene animations only. May cause \"jelly effect\" when overusing, but looks good for living forms animation, if used smartly.\n\nIG: The most advanced, but slowest smoothing algorithm, doesn't create position keyframes when used for rotation only."
+		
+		
 		button DeleteObjectsTransformKeys "Delete object's transform keys" height:16 tooltip:"Deletes selected object's transform animation keys.\n\nSelect all needed bones, choose transform type mode and keys range and push this button."
 	)
 	/*group "Before Export: Delete anim keys"
@@ -4266,7 +5314,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 	
 	/*---------------------------------------------------------------------------------------------------*/
 	
-	fn BakeTransformKeysForArray bkArray chbPos chbRot chbScl arStart arEnd bkInterval bool_ShowResultDialogue = --arType
+	fn BakeTransformKeysForArray bkArray chbPos chbRot chbScl chbRll chbFOV arStart arEnd bkInterval chbDelOrigKeyframes bool_ShowResultDialogue = --arType
 	(
 		local wholeBakingTransformTime = timeStamp()
 		SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Transform Baking initialising"
@@ -4274,25 +5322,53 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 		local BakePointHelper = point size:0.1
 		BakePointHelper.scale.controller = ScaleXYZ()
 		BakePointHelper.name = "BakeObjectsTransform temp helper"
+		BakeCamHelper = freecamera()
+		BakeCamHelper.name = "BakeObjectsTransform temp Cam helper"
 		SE_AAH_UpdateOrCreateAAHHelperLayer()
 		AAHHelperLayer.addnode BakePointHelper
+		AAHHelperLayer.addnode BakeCamHelper
 		local pgbCount = 0
 		local pgbCountTotal = bkArray.count
 		local isThereAZeroKeyAtAllpos = false
 		local isThereAZeroKeyAtAllrot = false
 		local isThereAZeroKeyAtAllscl = false
+		local isThereAZeroKeyAtAllfov = false
 		with Animate on
 		(
 			for bkArrayCurrentNode in bkArray do
 			(
+				isThereAZeroKeyAtAllpos = false
+				isThereAZeroKeyAtAllrot = false
+				isThereAZeroKeyAtAllscl = false
+				isThereAZeroKeyAtAllfov = false
+				BakePointHelper.parent = undefined
+				--at time 0.0
+				--(
+					BakePointHelper.position = [0.0,0.0,0.0]
+					in coordsys world BakePointHelper.rotation.x_rotation = 0.0
+					in coordsys world BakePointHelper.rotation.y_rotation = 0.0
+					in coordsys world BakePointHelper.rotation.z_rotation = 0.0
+					ResetScale BakePointHelper -- mapped method
+					in coordsys parent BakePointHelper.scale = [1,1,1]
+					local objTm= in coordsys parent BakePointHelper.transform
+					local objTmX=normalize objTm.row1
+					local objTmY=normalize objTm.row2
+					local objTmZ=normalize (cross objTmX objTmY) --Rebuild the Z to orthogonalize the matrix.
+					in coordsys parent BakePointHelper.transform=(matrix3 objTmX objTmY objTmZ objTm.pos)
+				--)
+				
 				deleteKeys BakePointHelper.position.controller
 				deleteKeys BakePointHelper.rotation.controller
 				deleteKeys BakePointHelper.scale.controller
+				if bkArrayCurrentNode.parent != undefined do
+				(
+					BakePointHelper.parent = bkArrayCurrentNode.parent
+				)
 				local BakeRangeKeysCount = (arEnd - arStart) / bkInterval
 				if BakeRangeKeysCount > 0 do
 				(
 					SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Baking: " + bkArrayCurrentNode.name
-					if chbPos == true do
+					if chbPos == true and ((chbRot == false and chbRll == false) or chbScl == false or ClassOf bkArrayCurrentNode == targetcamera or ClassOf bkArrayCurrentNode == VRayPhysicalCamera or ClassOf bkArrayCurrentNode == freecamera) do
 					(	
 						for i = 0 to BakeRangeKeysCount do
 						(
@@ -4300,11 +5376,13 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							at time (arStart + (i * bkInterval))
 							(
 								in coordsys parent BakePointHelper.position = in coordsys parent bkArrayCurrentNode.position
+								in coordsys parent BakePointHelper.position = in coordsys parent bkArrayCurrentNode.position
 							)
 						)
 						if arEnd == 0.0f do isThereAZeroKeyAtAllpos = true
 						at time arEnd
 						(
+							in coordsys parent BakePointHelper.position = in coordsys parent bkArrayCurrentNode.position
 							in coordsys parent BakePointHelper.position = in coordsys parent bkArrayCurrentNode.position
 						)
 						if BakePointHelper.position.controller.keys.count > 0 do
@@ -4324,15 +5402,20 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 										if bkArrayCurrentNode.position.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 									)
 								)
-								deselectKeys bkArrayCurrentNode.position.controller
-								selectKeys bkArrayCurrentNode.position.controller arStart arEnd
-								deleteKeys bkArrayCurrentNode.position.controller #selection
+								if chbDelOrigKeyframes == true do
+								(
+									deselectKeys bkArrayCurrentNode.position.controller
+									selectKeys bkArrayCurrentNode.position.controller arStart arEnd
+									deleteKeys bkArrayCurrentNode.position.controller #selection
+								)
 							)
 							for i = 1 to BakePointHelper.position.controller.keys.count do
 							(
 								at time BakePointHelper.position.controller.keys[i].time
 								(
-									in coordsys parent bkArrayCurrentNode.position = in coordsys parent BakePointHelper.position
+									in coordsys parent appendKey bkArrayCurrentNode.position.x_position.controller.keys BakePointHelper.position.x_position.controller.keys[i]
+									in coordsys parent appendKey bkArrayCurrentNode.position.y_position.controller.keys BakePointHelper.position.y_position.controller.keys[i]
+									in coordsys parent appendKey bkArrayCurrentNode.position.z_position.controller.keys BakePointHelper.position.z_position.controller.keys[i]
 								)
 							)
 							if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
@@ -4346,80 +5429,22 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 						deleteKeys BakePointHelper.rotation.controller
 						deleteKeys BakePointHelper.scale.controller
 					)
-					
-					if chbRot == true do
+					if (chbRot == true or chbRll == true) and (chbPos == false or chbScl == false or ClassOf bkArrayCurrentNode == targetcamera or ClassOf bkArrayCurrentNode == VRayPhysicalCamera or ClassOf bkArrayCurrentNode == freecamera) do
 					(	
 						for i = 0 to BakeRangeKeysCount do
 						(
 							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllrot = true
 							at time (arStart + (i * bkInterval))
 							(
-								/*
-								if bkArrayCurrentNode.parent != undefined then
-									--in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
-									in coordsys parent BakePointHelper.rotation.controller.value = normalize ((bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat)
-									--in coordsys parent BakePointHelper.rotation.controller.value = pickedObject.rotation.controller.value
-								else
-									in coordsys parent BakePointHelper.rotation.controller.value = bkArrayCurrentNode.transform as quat
-								*/
-								
-								
-								
-								-- NEW Rotation BUG!!!
-								/*
-								local oldTM
-								if bkArrayCurrentNode.parent != undefined then oldTM = bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)
-								else oldTM = bkArrayCurrentNode.transform
-								in coordsys parent BakePointHelper.transform = SE_AAH_CopyPasteTransform (in coordsys parent BakePointHelper.transform) oldTM false true false
-								*/
-								
-								--BakePointHelper.transform = bkArrayCurrentNode.transform
-								--format "setting baking rot keys...\n\n"
-								--SE_AAH_CopyPasteTransform BakePointHelper.transform bkArrayCurrentNode.transform false true false
-								--addNewKey BakePointHelper.rotation.controller (arStart + (i * bkInterval))
-								
-								if bkArrayCurrentNode.parent != undefined then
-									--in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
-									in coordsys parent BakePointHelper.transform = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform))
-									--in coordsys parent BakePointHelper.rotation.controller.value = pickedObject.rotation.controller.value
-								else
-								(
-									in coordsys parent BakePointHelper.transform = bkArrayCurrentNode.transform
-									in coordsys parent BakePointHelper.transform = bkArrayCurrentNode.transform
-								)
-								
+								in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
+								in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
 							)
 						)
 						if arEnd == 0.0f do isThereAZeroKeyAtAllrot = true
 						at time arEnd
 						(
-							/*
-							if bkArrayCurrentNode.parent != undefined then
-								--in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
-								in coordsys parent BakePointHelper.rotation.controller.value = normalize((bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat)
-							else
-								in coordsys parent BakePointHelper.rotation.controller.value = bkArrayCurrentNode.transform as quat
-							*/
-							
-							
-							-- NEW Rotation BUG!!!
-							/*
-							local oldTM
-							if bkArrayCurrentNode.parent != undefined then oldTM = bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)
-							else oldTM = bkArrayCurrentNode.transform
-							in coordsys parent BakePointHelper.transform = SE_AAH_CopyPasteTransform (in coordsys parent BakePointHelper.transform) oldTM false true false
-							*/
-								
-							--BakePointHelper.transform = bkArrayCurrentNode.transform
-							--SE_AAH_CopyPasteTransform BakePointHelper.transform bkArrayCurrentNode.transform false true false
-							--addNewKey BakePointHelper.rotation.controller arEnd
-							
-							if bkArrayCurrentNode.parent != undefined then
-								--in coordsys parent BakePointHelper.rotation.controller.value = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform)) as quat
-								in coordsys parent BakePointHelper.transform = (bkArrayCurrentNode.transform * (inverse bkArrayCurrentNode.parent.transform))
-								--in coordsys parent BakePointHelper.rotation.controller.value = pickedObject.rotation.controller.value
-							else
-								in coordsys parent BakePointHelper.transform = bkArrayCurrentNode.transform
+							in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
+							in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
 						)
 						deleteKeys BakePointHelper.position.controller
 						--deleteKeys BakePointHelper.rotation.controller
@@ -4435,7 +5460,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 									selectKeys BakePointHelper.rotation.controller 0.0f
 									deleteKeys BakePointHelper.rotation.controller #selection
 								)
-								if bkArrayCurrentNode.target != undefined then
+								if bkArrayCurrentNode.target != undefined and chbRll == true then
 								(
 									if bkArrayCurrentNode.controller.roll_angle.controller.keys.count > 0 do 
 									(
@@ -4444,11 +5469,14 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 											if bkArrayCurrentNode.controller.roll_angle.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 										)
 									)
-									deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
-									selectKeys bkArrayCurrentNode.controller.roll_angle.controller arStart arEnd
-									deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
+									if chbDelOrigKeyframes == true do
+									(
+										deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
+										selectKeys bkArrayCurrentNode.controller.roll_angle.controller arStart arEnd
+										deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
+									)
 								)
-								else
+								else if chbRot == true do
 								(
 									if bkArrayCurrentNode.rotation.controller.keys.count > 0 do 
 									(
@@ -4457,58 +5485,49 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 											if bkArrayCurrentNode.rotation.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllrot = true
 										)
 									)
-									--format "deleting extra keys...\n\n"
-									deselectKeys bkArrayCurrentNode.rotation.controller
-									selectKeys bkArrayCurrentNode.rotation.controller arStart arEnd
-									deleteKeys bkArrayCurrentNode.rotation.controller #selection
+									if chbDelOrigKeyframes == true do
+									(
+										--format "deleting extra keys...\n\n"
+										deselectKeys bkArrayCurrentNode.rotation.controller
+										selectKeys bkArrayCurrentNode.rotation.controller arStart arEnd
+										deleteKeys bkArrayCurrentNode.rotation.controller #selection
+									)
 								)
 							)
 							for i = 1 to BakePointHelper.rotation.controller.keys.count do
 							(
 								at time BakePointHelper.rotation.controller.keys[i].time
 								(
-									if bkArrayCurrentNode.target != undefined then
+									if bkArrayCurrentNode.target != undefined and chbRll == true then
 									(
-										if BakePointHelper.transform.row2.z < 0.0 then in coordsys parent bkArrayCurrentNode.controller.roll_angle = 180.0+(BakePointHelper.transform.rotation as eulerangles).y
-										else	in coordsys parent bkArrayCurrentNode.controller.roll_angle = -(BakePointHelper.transform.rotation as eulerangles).y
-									)
-									else
-									(
-										--in coordsys parent bkArrayCurrentNode.rotation.controller.value = normalize (BakePointHelper.transform as quat)
-										--bkArrayCurrentNode.rotation.controller.value = normalize (BakePointHelper.transform as quat)
-										--bkArrayCurrentNode.transform = BakePointHelper.transform
-										
-										
-										--SE_AAH_CopyPasteTransform bkArrayCurrentNode.transform BakePointHelper.transform false true true
-										--addNewKey bkArrayCurrentNode.rotation.controller BakePointHelper.rotation.controller.keys[i].time
-										--bkArrayCurrentNode.transform = BakePointHelper.transform
-										--bkArrayCurrentNode.rotation.controller.value = normalize (BakePointHelper.transform as quat)
-										
-										--in coordsys world bkArrayCurrentNode.rotation.controller.value = in coordsys world BakePointHelper.rotation.controller.value
-										if bkArrayCurrentNode.parent == undefined then
+										if BakePointHelper.transform.row2.z < 0.0 then
 										(
-											in coordsys world bkArrayCurrentNode.rotation.x_rotation = in coordsys world BakePointHelper.rotation.x_rotation
-											in coordsys world bkArrayCurrentNode.rotation.y_rotation = in coordsys world BakePointHelper.rotation.y_rotation
-											in coordsys world bkArrayCurrentNode.rotation.z_rotation = in coordsys world BakePointHelper.rotation.z_rotation
-											
-											in coordsys world bkArrayCurrentNode.rotation.x_rotation = in coordsys world BakePointHelper.rotation.x_rotation
-											in coordsys world bkArrayCurrentNode.rotation.y_rotation = in coordsys world BakePointHelper.rotation.y_rotation
-											in coordsys world bkArrayCurrentNode.rotation.z_rotation = in coordsys world BakePointHelper.rotation.z_rotation
+											in coordsys parent bkArrayCurrentNode.controller.roll_angle = 180.0+(BakePointHelper.transform.rotation as eulerangles).y
+											in coordsys parent bkArrayCurrentNode.controller.roll_angle = 180.0+(BakePointHelper.transform.rotation as eulerangles).y
 										)
-										else in coordsys parent bkArrayCurrentNode.rotation.controller.value = normalize (BakePointHelper.transform as quat)
-										--in coordsys parent bkArrayCurrentNode.rotation.controller.value = normalize (BakePointHelper.transform as quat)
+										else
+										(
+											in coordsys parent bkArrayCurrentNode.controller.roll_angle = -(BakePointHelper.transform.rotation as eulerangles).y
+											in coordsys parent bkArrayCurrentNode.controller.roll_angle = -(BakePointHelper.transform.rotation as eulerangles).y
+										)
+									)
+									else if chbRot == true do
+									(
+										in coordsys parent appendKey bkArrayCurrentNode.rotation.x_rotation.controller.keys BakePointHelper.rotation.x_rotation.controller.keys[i]
+										in coordsys parent appendKey bkArrayCurrentNode.rotation.y_rotation.controller.keys BakePointHelper.rotation.y_rotation.controller.keys[i]
+										in coordsys parent appendKey bkArrayCurrentNode.rotation.z_rotation.controller.keys BakePointHelper.rotation.z_rotation.controller.keys[i]
 									)
 								)
 							)
 							if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
 							(
-								if bkArrayCurrentNode.target != undefined then
+								if bkArrayCurrentNode.target != undefined and chbRll == true then
 								(
 									deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
 									selectKeys bkArrayCurrentNode.controller.roll_angle.controller 0.0f
 									deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
 								)
-								else
+								else if chbRot == true do
 								(
 									deselectKeys bkArrayCurrentNode.rotation.controller
 									selectKeys bkArrayCurrentNode.rotation.controller 0.0f
@@ -4520,8 +5539,10 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 						deleteKeys BakePointHelper.rotation.controller
 						deleteKeys BakePointHelper.scale.controller
 					)
+					isThereAZeroKeyAtAllpos = false
+					isThereAZeroKeyAtAllrot = false
 					
-					if chbScl == true do
+					if chbScl == true and ClassOf bkArrayCurrentNode != targetcamera and ClassOf bkArrayCurrentNode != VRayPhysicalCamera and ClassOf bkArrayCurrentNode != freecamera do
 					(	
 						bkArrayCurrentNode.scale.controller = ScaleXYZ()
 						for i = 0 to BakeRangeKeysCount do
@@ -4529,55 +5550,124 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllscl = true
 							at time (arStart + (i * bkInterval))
 							(
-								--in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
-								--in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
-								--in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
-								if chbRot == true then BakePointHelper.transform = SE_AAH_CopyPasteTransform BakePointHelper.transform bkArrayCurrentNode.transform false true true
-								else in coordsys parent BakePointHelper.transform = in coordsys parent bkArrayCurrentNode.transform
+								in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
+								in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
 								--format "setting baking scl keys...\n\n"
 							)
 						)
 						if arEnd == 0.0f do isThereAZeroKeyAtAllscl = true
 						at time arEnd
 						(
-							--in coordsys world BakePointHelper.scale.x = in coordsys world bkArrayCurrentNode.scale.x
-							--in coordsys world BakePointHelper.scale.y = in coordsys world bkArrayCurrentNode.scale.y
-							--in coordsys world BakePointHelper.scale.z = in coordsys world bkArrayCurrentNode.scale.z
-							if chbRot == true then BakePointHelper.transform = SE_AAH_CopyPasteTransform BakePointHelper.transform bkArrayCurrentNode.transform false true true
-							else in coordsys parent BakePointHelper.transform = in coordsys parent bkArrayCurrentNode.transform
+							in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
+							in coordsys world BakePointHelper.transform = in coordsys world bkArrayCurrentNode.transform
 						)
 						--format "Scl keys count: %\n\n" BakePointHelper.scale.controller.keys.count
 						if BakePointHelper.scale.controller.keys.count > 0 do
 						(
-							if BakePointHelper.scale.controller.keys.count > 0 do
+							if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
 							(
-								if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								deselectKeys BakePointHelper.scale.controller
+								selectKeys BakePointHelper.scale.controller 0.0f
+								deleteKeys BakePointHelper.scale.controller #selection
+							)
+							if chbPos == true and (chbRot == true or chbRll == true) do
+							(
+								for p_i = 1 to bkArrayCurrentNode.position.controller.keys.count do
 								(
-									deselectKeys BakePointHelper.scale.controller
-									selectKeys BakePointHelper.scale.controller 0.0f
-									deleteKeys BakePointHelper.scale.controller #selection
+									if bkArrayCurrentNode.position.controller.keys[p_i].time == 0.0f do isThereAZeroKeyAtAllpos = true
 								)
-								if bkArrayCurrentNode.scale.controller.keys.count > 0 do 
+								if bkArrayCurrentNode.target != undefined and chbRll == true then
 								(
-									for i = 1 to bkArrayCurrentNode.scale.controller.keys.count do
+									if bkArrayCurrentNode.controller.roll_angle.controller.keys.count > 0 do 
 									(
-										if bkArrayCurrentNode.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+										for r_i = 1 to bkArrayCurrentNode.controller.roll_angle.controller.keys.count do
+										(
+											if bkArrayCurrentNode.controller.roll_angle.controller.keys[r_i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										)
 									)
 								)
+								else if chbRot == true do
+								(
+									if bkArrayCurrentNode.rotation.controller.keys.count > 0 do 
+									(
+										for r_i = 1 to bkArrayCurrentNode.rotation.controller.keys.count do
+										(
+											if bkArrayCurrentNode.rotation.controller.keys[r_i].time == 0.0f do isThereAZeroKeyAtAllrot = true
+										)
+									)
+								)
+							)
+							if bkArrayCurrentNode.scale.controller.keys.count > 0 do 
+							(
+								for i = 1 to bkArrayCurrentNode.scale.controller.keys.count do
+								(
+									if bkArrayCurrentNode.scale.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllscl = true
+								)
+							)
+							if chbDelOrigKeyframes == true do
+							(
 								--format "deleting extra keys...\n\n"
 								deselectKeys bkArrayCurrentNode.scale.controller
 								selectKeys bkArrayCurrentNode.scale.controller arStart arEnd
 								deleteKeys bkArrayCurrentNode.scale.controller #selection
+								if chbPos == true and (chbRot == true or chbRll == true) do
+								(
+									deselectKeys bkArrayCurrentNode.position.controller
+									selectKeys bkArrayCurrentNode.position.controller arStart arEnd
+									deleteKeys bkArrayCurrentNode.position.controller #selection
+									if bkArrayCurrentNode.target != undefined and chbRll == true then
+									(
+										deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
+										selectKeys bkArrayCurrentNode.controller.roll_angle.controller arStart arEnd
+										deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
+									)
+									else if chbRot == true do
+									(
+										deselectKeys bkArrayCurrentNode.rotation.controller
+										selectKeys bkArrayCurrentNode.rotation.controller arStart arEnd
+										deleteKeys bkArrayCurrentNode.rotation.controller #selection
+									)
+								)
 							)
 							for i = 1 to BakePointHelper.scale.controller.keys.count do
 							(
 								at time BakePointHelper.scale.controller.keys[i].time
 								(
-									--in coordsys world bkArrayCurrentNode.scale.x = in coordsys world BakePointHelper.scale.x
-									--in coordsys world bkArrayCurrentNode.scale.y = in coordsys world BakePointHelper.scale.y
-									--in coordsys world bkArrayCurrentNode.scale.z = in coordsys world BakePointHelper.scale.z
-									if chbRot == true then bkArrayCurrentNode.transform = SE_AAH_CopyPasteTransform bkArrayCurrentNode.transform BakePointHelper.transform false true true
-									else in coordsys parent bkArrayCurrentNode.scale.controller.value = in coordsys parent BakePointHelper.scale.controller.value
+									if chbPos == true and (chbRot == true or chbRll == true) then
+									(
+										in coordsys world bkArrayCurrentNode.transform = in coordsys world BakePointHelper.transform
+										in coordsys world bkArrayCurrentNode.transform = in coordsys world BakePointHelper.transform
+									)
+									else
+									(
+										in coordsys parent appendKey bkArrayCurrentNode.scale.x_scale.controller.keys BakePointHelper.scale.x_scale.controller.keys[i]
+										in coordsys parent appendKey bkArrayCurrentNode.scale.y_scale.controller.keys BakePointHelper.scale.y_scale.controller.keys[i]
+										in coordsys parent appendKey bkArrayCurrentNode.scale.z_scale.controller.keys BakePointHelper.scale.z_scale.controller.keys[i]
+									)
+								)
+							)
+							if chbPos == true and (chbRot == true or chbRll == true) do
+							(
+								if isThereAZeroKeyAtAllpos == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								(
+									deselectKeys bkArrayCurrentNode.position.controller
+									selectKeys bkArrayCurrentNode.position.controller 0.0f
+									deleteKeys bkArrayCurrentNode.position.controller #selection
+								)
+								if isThereAZeroKeyAtAllrot == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								(
+									if bkArrayCurrentNode.target != undefined and chbRll == true then
+									(
+										deselectKeys bkArrayCurrentNode.controller.roll_angle.controller
+										selectKeys bkArrayCurrentNode.controller.roll_angle.controller 0.0f
+										deleteKeys bkArrayCurrentNode.controller.roll_angle.controller #selection
+									)
+									else if chbRot == true do
+									(
+										deselectKeys bkArrayCurrentNode.rotation.controller
+										selectKeys bkArrayCurrentNode.rotation.controller 0.0f
+										deleteKeys bkArrayCurrentNode.rotation.controller #selection
+									)
 								)
 							)
 							if isThereAZeroKeyAtAllscl == false do --we need to prevent the automatic creation of an extra anim key at zero frame
@@ -4588,6 +5678,67 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							)
 						)
 					)
+					if chbFOV == true do
+					(
+						if ClassOf bkArrayCurrentNode == targetcamera or ClassOf bkArrayCurrentNode == VRayPhysicalCamera or ClassOf bkArrayCurrentNode == freecamera do
+						(
+							for i = 0 to BakeRangeKeysCount do
+							(
+								if (arStart + (i * bkInterval)) == 0.0f do isThereAZeroKeyAtAllfov = true
+								at time (arStart + (i * bkInterval))
+								(
+									BakeCamHelper.FOV = bkArrayCurrentNode.FOV
+									BakeCamHelper.FOV = bkArrayCurrentNode.FOV
+								)
+							)
+							if arEnd == 0.0f do isThereAZeroKeyAtAllfov = true
+							at time arEnd
+							(
+								BakeCamHelper.FOV = bkArrayCurrentNode.FOV
+								BakeCamHelper.FOV = bkArrayCurrentNode.FOV
+							)
+							if BakeCamHelper.FOV.controller.keys.count > 0 do
+							(
+								if BakeCamHelper.FOV.controller.keys.count > 0 do
+								(
+									if isThereAZeroKeyAtAllfov == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+									(
+										deselectKeys BakeCamHelper.FOV.controller
+										selectKeys BakeCamHelper.FOV.controller 0.0f
+										deleteKeys BakeCamHelper.FOV.controller #selection
+									)
+									if bkArrayCurrentNode.FOV.controller.keys.count > 0 do 
+									(
+										for i = 1 to bkArrayCurrentNode.FOV.controller.keys.count do
+										(
+											if bkArrayCurrentNode.FOV.controller.keys[i].time == 0.0f do isThereAZeroKeyAtAllfov = true
+										)
+									)
+									if chbDelOrigKeyframes == true do
+									(
+										deselectKeys bkArrayCurrentNode.FOV.controller
+										selectKeys bkArrayCurrentNode.FOV.controller arStart arEnd
+										deleteKeys bkArrayCurrentNode.FOV.controller #selection
+									)
+								)
+								for i = 1 to BakeCamHelper.FOV.controller.keys.count do
+								(
+									at time BakeCamHelper.FOV.controller.keys[i].time
+									(
+										appendKey bkArrayCurrentNode.FOV.controller.keys BakeCamHelper.FOV.controller.keys[i]
+									)
+								)
+								if isThereAZeroKeyAtAllfov == false do --we need to prevent the automatic creation of an extra anim key at zero frame
+								(
+									deselectKeys bkArrayCurrentNode.FOV.controller
+									selectKeys bkArrayCurrentNode.FOV.controller 0.0f
+									deleteKeys bkArrayCurrentNode.FOV.controller #selection
+								)
+							)
+							deleteKeys BakeCamHelper.FOV.controller
+						)
+					)
+					
 					pgbCount = pgbCount + 1
 					SE_AAH_Process_Rollout.prgb_AAH.value = 100.*pgbCount/pgbCountTotal
 				)
@@ -4595,6 +5746,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 			)
 		)
 		delete BakePointHelper
+		delete BakeCamHelper
 		wholeBakingTransformTime = (((timeStamp() - wholeBakingTransformTime) / 1000.0) as string)
 		SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Tf baked in " + wholeBakingTransformTime + "s"
 		SE_AAH_Process_Rollout.prgb_AAH.value = 0
@@ -4608,7 +5760,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 	
 	/*---------------------------------------------------------------------------------------------------*/
 	
-	fn DeleteTransformKeysForArray dkArray chbPos chbRot chbScl AllAnimation arStart arEnd bool_ShowResultDialogue = --arType
+	fn DeleteTransformKeysForArray dkArray chbPos chbRot chbScl chbRll chbFov AllAnimation arStart arEnd bool_ShowResultDialogue = --arType
 	(
 		local wholeDeleteTransformTime = timeStamp()
 		SE_AAH_Process_Rollout.lbl_PrcssAAH.text = "Transform anim deleting initialising"
@@ -4636,9 +5788,9 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 					selectKeys dkArrayCurrentNode.position.controller arStart arEnd
 					deleteKeys dkArrayCurrentNode.position.controller #selection
 				)
-				if chbRot == true do
+				if chbRot == true or chbRll == true do
 				(
-					if dkArrayCurrentNode.target != undefined then
+					if dkArrayCurrentNode.target != undefined and chbRll == true then
 					(
 						if dkArrayCurrentNode.controller.roll_angle.controller.keys.count > 0 do
 						(
@@ -4647,7 +5799,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 							deleteKeys dkArrayCurrentNode.controller.roll_angle.controller #selection
 						)
 					)
-					else
+					else if chbRot == true do
 					(
 						if dkArrayCurrentNode.rotation.controller.keys.count > 0 do
 						(
@@ -4662,6 +5814,15 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 					deselectKeys dkArrayCurrentNode.scale.controller
 					selectKeys dkArrayCurrentNode.scale.controller arStart arEnd
 					deleteKeys dkArrayCurrentNode.scale.controller #selection
+				)
+				if chbFov == true and (ClassOf dkArrayCurrentNode == targetcamera or ClassOf dkArrayCurrentNode == VRayPhysicalCamera or ClassOf dkArrayCurrentNode == freecamera) do
+				(
+					if dkArrayCurrentNode.FOV.controller.keys.count > 0 do
+					(
+						deselectKeys dkArrayCurrentNode.FOV.controller
+						selectKeys dkArrayCurrentNode.FOV.controller arStart arEnd
+						deleteKeys dkArrayCurrentNode.FOV.controller #selection
+					)
 				)
 			)
 			pgbCount = pgbCount + 1
@@ -4742,25 +5903,42 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 						if (queryBox info_str_msg title:"ATTENTION") then
 						(
 							select pickedObject
-							if chkbx_ThTrnsfrmPos.state == true do
+							if chkbx_ThTrnsfrmPos.state == true and chkbx_ThTrnsfrmRot.state == true and chkbx_ThTrnsfrmScale.state == true then
 							(
-								pickedObject.position.x = s.position.x
-								pickedObject.position.y = s.position.y
-								pickedObject.position.z = s.position.z
+								pickedObject.transform = s.transform
+								pickedObject.transform = s.transform -- doubling to prevent some 3ds max bugs
 							)
-							if chkbx_ThTrnsfrmRot.state == true do
+							else
 							(
-								pickedObject.rotation.x_rotation = s.rotation.x_rotation
-								pickedObject.rotation.y_rotation = s.rotation.y_rotation
-								pickedObject.rotation.z_rotation = s.rotation.z_rotation
-							)
-							if chkbx_ThTrnsfrmScale.state == true do
-							(
-								s.scale.controller = ScaleXYZ()
-								pickedObject.scale.controller = ScaleXYZ()
-								pickedObject.scale.x = s.scale.x
-								pickedObject.scale.y = s.scale.y
-								pickedObject.scale.z = s.scale.z
+								if chkbx_ThTrnsfrmPos.state == true do
+								(
+									pickedObject.position.x = s.position.x
+									pickedObject.position.y = s.position.y
+									pickedObject.position.z = s.position.z
+									pickedObject.position.x = s.position.x -- doubling to prevent some 3ds max bugs
+									pickedObject.position.y = s.position.y
+									pickedObject.position.z = s.position.z
+								)
+								if chkbx_ThTrnsfrmRot.state == true do
+								(
+									pickedObject.rotation.x_rotation = s.rotation.x_rotation
+									pickedObject.rotation.y_rotation = s.rotation.y_rotation
+									pickedObject.rotation.z_rotation = s.rotation.z_rotation
+									pickedObject.rotation.x_rotation = s.rotation.x_rotation -- doubling to prevent some 3ds max bugs
+									pickedObject.rotation.y_rotation = s.rotation.y_rotation
+									pickedObject.rotation.z_rotation = s.rotation.z_rotation
+								)
+								if chkbx_ThTrnsfrmScale.state == true do
+								(
+									s.scale.controller = ScaleXYZ()
+									pickedObject.scale.controller = ScaleXYZ()
+									pickedObject.scale.x = s.scale.x
+									pickedObject.scale.y = s.scale.y
+									pickedObject.scale.z = s.scale.z
+									pickedObject.scale.x = s.scale.x -- doubling to prevent some 3ds max bugs
+									pickedObject.scale.y = s.scale.y
+									pickedObject.scale.z = s.scale.z
+								)
 							)
 							local info_str_msg = "Object \"" + pickedObject.name + "\" now has \"" + s.name + "\"'s transform!"
 							messagebox info_str_msg title:"Done!"
@@ -4782,9 +5960,16 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 			(
 				for s in selection do
 				(
-					if chkbx_ThTrnsfrmPos.state == true do	s.position = [0.0,0.0,0.0]
+					if chkbx_ThTrnsfrmPos.state == true do
+					(
+						s.position = [0.0,0.0,0.0]
+						s.position = [0.0,0.0,0.0]
+					)
 					if chkbx_ThTrnsfrmRot.state == true do
 					(
+						in coordsys world s.rotation.x_rotation = 0.0
+						in coordsys world s.rotation.y_rotation = 0.0
+						in coordsys world s.rotation.z_rotation = 0.0
 						in coordsys world s.rotation.x_rotation = 0.0
 						in coordsys world s.rotation.y_rotation = 0.0
 						in coordsys world s.rotation.z_rotation = 0.0
@@ -4796,6 +5981,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 						local rosOldParent = s.parent
 						if rosOldParent != undefined do s.parent = undefined
 						ResetScale s -- mapped method
+						in coordsys parent s.scale = [1,1,1]
 						in coordsys parent s.scale = [1,1,1]
 						local objTm= in coordsys parent s.transform
 						local objTmX=normalize objTm.row1
@@ -5287,18 +6473,18 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 		)
 		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"
 	)
-	
+		
 	on BakeObjectsTransformKeys pressed do
 	(
 		if selection.count > 0 then
 		(
-			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true then
+			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true or chkbx_ACTrnsfrmKsRoll.state or chkbx_ACTrnsfrmKsFOV.state then
 			(
 				local oldAnimKeysState = SE_AAH_GetAndOffAnimKeys()
 				UpdateAnimRangeStartAndEnd()
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
-					BakeTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe spn_BkTrnsfrmAccuracyVal.value 1
+					BakeTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state chkbx_ACTrnsfrmKsRoll.state chkbx_ACTrnsfrmKsFOV.state ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe spn_BkTrnsfrmAccuracyVal.value chkbx_BkDeleteOrigkeys.state 1
 				)
 				SE_AAH_SetBackAnimKeys oldAnimKeysState
 			)
@@ -5394,11 +6580,14 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 		else messageBox "Select at least ONE bone/helper/object and THEN push that button!" title:"ERROR"	
 	)
 	
+	--if fovKeysTrigger == true and (ClassOf s == targetcamera or ClassOf s == VRayPhysicalCamera or ClassOf s == freecamera) do
+	--if s.FOV.controller.keys.count > 0 do
+	
 	on DeleteObjectsTransformKeys pressed do
 	(
 		if selection.count > 0 then
 		(
-			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true then
+			if chkbx_ACTrnsfrmKsPos.state == true or chkbx_ACTrnsfrmKsRot.state == true or chkbx_ACTrnsfrmKsScale.state == true or chkbx_ACTrnsfrmKsRoll.state or chkbx_ACTrnsfrmKsFOV.state then
 			(
 				local oldAnimKeysState = SE_AAH_GetAndOffAnimKeys()
 				UpdateAnimRangeStartAndEnd()
@@ -5406,7 +6595,7 @@ roll_angle = -0.0175*(crah.transform.rotation as eulerangles).y"--"0.00875*((fte
 				if rb_AnimKeysRange.state == 1 do allAnimationTrigger = 1
 				if ACAnimRangeStartKeyframe != undefined and ACAnimRangeEndKeyframe != undefined do
 				(
-					DeleteTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state allAnimationTrigger ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe 1
+					DeleteTransformKeysForArray selection chkbx_ACTrnsfrmKsPos.state chkbx_ACTrnsfrmKsRot.state chkbx_ACTrnsfrmKsScale.state chkbx_ACTrnsfrmKsRoll.state chkbx_ACTrnsfrmKsFOV.state allAnimationTrigger ACAnimRangeStartKeyframe ACAnimRangeEndKeyframe 1
 				)
 				SE_AAH_SetBackAnimKeys oldAnimKeysState
 			)
@@ -6446,7 +7635,7 @@ rollout SE_AAH_Body_Anim_Rollout "Body Anim" width:132 height:170
 			if (queryBox "Humanoid?" title:"ATTENTION") do bool_isItHumanoud = 1
 			for ccbone in ccBonesArr do
 			(
-				local ccBoneId = SE_AAH_GetSubID ccbone
+				local ccBoneId = SE_AAH_GetSubID 0 ccbone
 				if ccBoneId != -1 do
 				(
 					if ccBoneId == 43 or ccBoneId == 53 or ccBoneId == 24 or ccBoneId == 34 do
@@ -6532,7 +7721,7 @@ rollout SE_AAH_Body_Anim_Rollout "Body Anim" width:132 height:170
 			
 				for ccbone in ccBonesArr do
 				(
-					local ccBoneId = SE_AAH_GetSubID ccbone
+					local ccBoneId = SE_AAH_GetSubID 0 ccbone
 					if ccBoneId != -1 do
 					(
 						if ccBoneId == 24 or ccBoneId == 34 do
@@ -6826,7 +8015,7 @@ rollout SE_AAH_Face_Anim_Rollout "Face Anim" width:132 height:170
 			local HeadBone
 			for b in cfcBonesArr do
 			(
-				if SE_AAH_GetSubID b == cfcCH.headid do HeadBone = b
+				if SE_AAH_GetSubID 0 b == cfcCH.headid do HeadBone = b
 			)
 			if HeadBone != undefined then
 			(
@@ -6987,7 +8176,7 @@ rollout SE_AAH_Anim_Adapt_Rollout "Anim Adaptation" width:132 height:170
 			--local aMCIKLegs = #()
 			for cAACbone in cAACBonesArr do
 			(
-				local cAACBoneId = SE_AAH_GetSubID cAACbone
+				local cAACBoneId = SE_AAH_GetSubID 0 cAACbone
 				if cAACBoneId != -1 do
 				(
 					if cAACBoneId == 43 or cAACBoneId == 53 do
@@ -7130,7 +8319,7 @@ rollout SE_AAH_Anim_Adapt_Rollout "Anim Adaptation" width:132 height:170
 			local newAAControllerSize = 0.5
 			for cAACbone in cAACBonesArr do
 			(
-				local cAACBoneId = SE_AAH_GetSubID cAACbone
+				local cAACBoneId = SE_AAH_GetSubID 0 cAACbone
 				if cAACBoneId != -1 do
 				(
 					if cAACBoneId == 43 or cAACBoneId == 53 do
@@ -7296,7 +8485,7 @@ rollout SE_AAH_Hierarchies_Rollout "Bones Conversion" width:132 height:170
 (
 	group "Biped settings"
 	(
-		button CreateBiped "Create Biped for selected" width:160 height:22 align:#center tooltip:"Creates Biped for picked bones' hierarchy."
+		button CreateBiped "Create Biped for selected" width:160 height:22 align:#center tooltip:"Creates Biped for picked bones' hierarchy.\n\nWARNING!!! Not finished yet."
 	)
 
 	/*---------------------------------------------------------------------------------------------------*/
@@ -7872,12 +9061,12 @@ rollout SE_AAH_Info_Rollout "Extra Info" width:132 height:30
 		button AboutButton "About" width:58 height:16 pos:[106,25] tooltip:"Push this button to see some extra info"
 	)
 	
-	rollout AboutDialog "Another Animation Helper v.0.993b" width:275 height:340
+	rollout AboutDialog "Another Animation Helper v.0.994b" width:275 height:410
 	(
-		label abd1 "\"Another Animation Helper\" v.0.993b (Open Beta)" align:#left
+		label abd1 "\"Another Animation Helper\" v.0.994b (Open Beta)" align:#left
 		label abd2 ""
 		label abd3 "Made by Shagg_E, 2017-2026:" align:#left
-		HyperLink githubpage "https://github.com/ShaggEw/AnotherAnimationHelper" address:"https://github.com/ShaggEw/AnotherAnimationHelper" color: (color 191 76 0) hovercolor:(color 255 106 0) visitedcolor:(color 127 51 0)
+		HyperLink githubpage "https://github.com/ShaggEw/AnotherAnimationHelper" address:"https://github.com/ShaggEw/AnotherAnimationHelper" color: (color 0 0 0) hovercolor:(color 128 128 128) visitedcolor:(color 127 51 0)
 		HyperLink nrsite "http://newrockstar.do.am" address:"http://newrockstar.do.am" color: (color 0 127 0) hovercolor:(color 0 191 0) visitedcolor:(color 0 95 0)
 		HyperLink ytchannel "https://youtube.com/@Shagg_E" address:"https://youtube.com/@Shagg_E" color: (color 191 0 0) hovercolor:(color 255 0 0) visitedcolor:(color 127 0 0)
 		HyperLink boostypage "https://boosty.to/shagge" address:"https://boosty.to/shagge" color: (color 191 76 0) hovercolor:(color 255 106 0) visitedcolor:(color 127 51 0)
@@ -7894,15 +9083,19 @@ rollout SE_AAH_Info_Rollout "Extra Info" width:132 height:30
 		--label abd13 "" align:#left
 		--label abd14 "" align:#left
 		label abd15 "to work on all this stuff," align:#left
-		label abd16 "and many other guys who made all this possible!" align:#left
-		label abd17 ""
-		label abd18 "This script is not copyrighted, please feel free" align:#left
-		label abd19 "to modify or distribute!" align:#left
+		label abd16 "deltaCJ and Benjamin Strutui" align:#left
+		label abd17 "- for their great help and support," align:#left
+		label abd18 "Cleoude, Braindawg and Speccy" align:#left
+		label abd19 "- for testing and feedback," align:#left
+		label abd20 "and many other guys who made all this possible!" align:#left
+		label abd21 ""
+		label abd22 "This script is not copyrighted, please feel free" align:#left
+		label abd23 "to modify or distribute!" align:#left
 	)
 
 	on HelpButton pressed do
 	(
-		local my_str_msg = "\"Another Animation Helper\" gives you\nthe ability to skip some boring moments\nof skinning and animation of the characters\nor something else.\n\n" +
+		local my_str_msg = "\"Another Animation Helper\" gives you\nthe ability to skip some boring moments\nof rigging and animation process.\n\n" +
 		"Point on any button with the mouse cursor\nto see some extra info.\n\nThat's all, dudes."
 		messageBox my_str_msg title:"Help for AA Helper...nice title, genius!"
 	)
@@ -7920,7 +9113,7 @@ rollout SE_AAH_Info_Rollout "Extra Info" width:132 height:30
 /*********************************************************************************************************************************************************************/
 
 try (closeRolloutFloater SE_AAHWindow) catch ()
-SE_AAHWindow = NewRolloutFloater "AA Helper" 190 720 50 100
+SE_AAHWindow = NewRolloutFloater "AA Helper" 190 775 50 100
 addRollout SE_AAH_Process_Rollout SE_AAHWindow --rolledUp:true
 addRollout SE_AAH_Rig_Tuner_Rollout SE_AAHWindow rolledUp:true
 addRollout SE_AAH_Main_Anim_Rollout SE_AAHWindow --rolledUp:true
